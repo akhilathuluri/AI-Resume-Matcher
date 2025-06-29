@@ -336,4 +336,4 @@ This project is licensed under the MIT License - see the for details.
 
 **Made with ❤️ by Athuluri Akhil**
 
-*TalentMatch AI - Revolutionizing recruitment with artificial intelligence*
+*AI Resume Matcher - Revolutionizing recruitment with artificial intelligence*
