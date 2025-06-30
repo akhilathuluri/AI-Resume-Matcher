@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { User, Store as Storage, FileText, Calendar } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 
 interface StorageStats {
-  total_storage_used: number
+  total_storage_used?: number
+  total_size?: number // Alternative field name
   total_files: number
   updated_at: string
 }
@@ -94,8 +95,43 @@ export function SettingsPage() {
 
   const getStoragePercentage = () => {
     if (!storageStats) return 0
-    const maxStorage = 10 * 1024 * 1024 * 1024 // 10GB in bytes
-    return Math.min((storageStats.total_storage_used / maxStorage) * 100, 100)
+    const maxStorage = 500 * 1024 * 1024 // 500MB in bytes
+    const usedStorage = storageStats.total_storage_used || storageStats.total_size || 0
+    const percentage = Math.min((usedStorage / maxStorage) * 100, 100)
+    
+    // Debug logging
+    console.log('Storage Debug:', {
+      total_storage_used: storageStats.total_storage_used,
+      total_size: storageStats.total_size,
+      usedStorage,
+      maxStorage,
+      percentage,
+      formatted_used: formatFileSize(usedStorage)
+    })
+    
+    return percentage
+  }
+
+  const getVisualPercentage = () => {
+    const actualPercentage = getStoragePercentage()
+    // Set minimum visual width of 1% if there's any storage used, so the bar is always visible
+    if (actualPercentage > 0 && actualPercentage < 1) {
+      return 1
+    }
+    return actualPercentage
+  }
+
+  const getFormattedPercentage = () => {
+    const percentage = getStoragePercentage()
+    if (percentage === 0) return '0%'
+    if (percentage < 0.01) return '<0.01%'
+    if (percentage < 1) return percentage.toFixed(3) + '%'
+    return percentage.toFixed(1) + '%'
+  }
+
+  const getUsedStorage = () => {
+    if (!storageStats) return 0
+    return storageStats.total_storage_used || storageStats.total_size || 0
   }
 
   return (
@@ -163,16 +199,16 @@ export function SettingsPage() {
                 <div>
                   <div className="flex justify-between text-sm text-gray-700 mb-2">
                     <span>Storage Used</span>
-                    <span>{formatFileSize(storageStats.total_storage_used)} / 10 GB</span>
+                    <span>{formatFileSize(getUsedStorage())} / 500 MB</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div
                       className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${getStoragePercentage()}%` }}
+                      style={{ width: `${getVisualPercentage()}%` }}
                     ></div>
                   </div>
                   <div className="mt-2 text-xs text-gray-500">
-                    {getStoragePercentage().toFixed(1)}% of storage used
+                    {getFormattedPercentage()} of storage used
                   </div>
                 </div>
 
@@ -193,7 +229,7 @@ export function SettingsPage() {
                       Total Size
                     </dt>
                     <dd className="mt-1 text-2xl font-semibold text-gray-900">
-                      {formatFileSize(storageStats.total_storage_used)}
+                      {formatFileSize(getUsedStorage())}
                     </dd>
                   </div>
                   <div className="bg-gray-50 rounded-lg p-4">
@@ -221,7 +257,7 @@ export function SettingsPage() {
                           Storage Warning
                         </h3>
                         <div className="mt-2 text-sm text-yellow-700">
-                          <p>You're using {getStoragePercentage().toFixed(1)}% of your storage. Consider removing unused files to free up space.</p>
+                          <p>You're using {getFormattedPercentage()} of your storage. Consider removing unused files to free up space.</p>
                         </div>
                       </div>
                     </div>
@@ -244,10 +280,11 @@ export function SettingsPage() {
           <div className="px-6 py-4">
             <div className="prose prose-sm text-gray-600">
               <ul className="space-y-2">
-                <li>Maximum file size: 500 MB per file</li>
-                <li>Supported formats: PDF and TXT files only</li>
-                <li>Total storage limit: 10 GB per account</li>
+                <li>Maximum file size: 100 MB per file</li>
+                <li>Supported formats: PDF, TXT, and DOCX files</li>
+                <li>Total storage limit: 500 MB per account</li>
                 <li>Files are processed for AI matching capabilities</li>
+                <li>DOCX files may be stored as text-only if binary storage is restricted</li>
                 <li>All data is securely stored and encrypted</li>
               </ul>
             </div>
