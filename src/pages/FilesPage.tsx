@@ -3,6 +3,7 @@ import { Upload, File, Trash2, Eye, Search, RefreshCw } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import * as pdfjsLib from 'pdfjs-dist'
+import mammoth from 'mammoth'
 
 // Set up PDF.js worker with reliable CDN
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
@@ -14,6 +15,7 @@ interface Resume {
   file_type: string
   created_at: string
   file_path: string
+  content?: string
 }
 
 export function FilesPage() {
@@ -38,7 +40,7 @@ export function FilesPage() {
     try {
       const { data, error } = await supabase
         .from('resumes')
-        .select('*')
+        .select('*, content')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
@@ -190,6 +192,41 @@ export function FilesPage() {
     }
   }
 
+  const extractTextFromDOCX = async (file: File): Promise<string> => {
+    try {
+      const arrayBuffer = await file.arrayBuffer()
+      
+      // Extract text using mammoth
+      const result = await mammoth.extractRawText({ arrayBuffer })
+      
+      // Only log warnings if they're significant
+      if (result.messages && result.messages.length > 0) {
+        const significantWarnings = result.messages.filter(msg => 
+          msg.type === 'error' || (msg.type === 'warning' && !msg.message.includes('style'))
+        )
+        if (significantWarnings.length > 0) {
+          console.warn('DOCX processing issues:', significantWarnings)
+        }
+      }
+      
+      const text = result.value.trim()
+      return text || 'No text content could be extracted from this DOCX document'
+    } catch (error) {
+      console.error('Error extracting text from DOCX:', error)
+      
+      // Provide more specific error messages
+      if (error instanceof Error) {
+        if (error.message.includes('zip')) {
+          throw new Error('This DOCX file appears to be corrupted or invalid.')
+        } else if (error.message.includes('password') || error.message.includes('encrypted')) {
+          throw new Error('This DOCX file is password protected and cannot be processed.')
+        }
+      }
+      
+      throw new Error('Failed to extract text from DOCX. The file may be corrupted or in an unsupported format.')
+    }
+  }
+
   const extractTextFromFile = async (file: File): Promise<string> => {
     if (file.type === 'application/pdf') {
       return await extractTextFromPDF(file)
@@ -203,8 +240,10 @@ export function FilesPage() {
         reader.onerror = reject
         reader.readAsText(file)
       })
+    } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      return await extractTextFromDOCX(file)
     } else {
-      throw new Error('Unsupported file type')
+      throw new Error('Unsupported file type. Please upload PDF, TXT, or DOCX files.')
     }
   }
 
@@ -239,7 +278,36 @@ export function FilesPage() {
 
     setUploading(true)
     try {
-      // Extract text content
+      // Check individual file size limit (100MB)
+      const maxFileSize = 100 * 1024 * 1024 // 100MB in bytes
+      if (file.size > maxFileSize) {
+        throw new Error('File size exceeds the 100MB limit per file.')
+      }
+
+      // Check total storage limit (500MB)
+      const { data: existingResumes } = await supabase
+        .from('resumes')
+        .select('file_size')
+        .eq('user_id', user.id)
+
+      const currentStorageUsed = existingResumes?.reduce((sum, resume) => sum + resume.file_size, 0) || 0
+      const maxTotalStorage = 500 * 1024 * 1024 // 500MB in bytes
+      
+      if (currentStorageUsed + file.size > maxTotalStorage) {
+        const remainingSpace = maxTotalStorage - currentStorageUsed
+        throw new Error(
+          `Upload would exceed your 500MB storage limit. ` +
+          `You have ${formatFileSize(remainingSpace)} remaining. ` +
+          `This file is ${formatFileSize(file.size)}.`
+        )
+      }
+
+      // Show extraction progress for non-text files
+      if (file.type !== 'text/plain') {
+        showNotification(`Extracting text from ${file.name}...`, 'info')
+      }
+      
+      // Extract text content first
       const content = await extractTextFromFile(file)
       
       // Generate embedding
@@ -254,9 +322,60 @@ export function FilesPage() {
         .from('resumes')
         .upload(filePath, file)
 
-      if (uploadError) throw uploadError
+      if (uploadError) {
+        console.error('Upload error:', uploadError)
+        
+        // If DOCX MIME type is not supported, offer text-only storage
+        if (uploadError.message?.includes('mime type') && uploadError.message?.includes('not supported') && file.type.includes('wordprocessingml')) {
+          const proceed = confirm(
+            `🔄 DOCX Storage Configuration Needed\n\n` +
+            `Your Supabase storage bucket isn't configured for DOCX files yet.\n\n` +
+            `✅ Good news: I successfully extracted the text content!\n\n` +
+            `Options:\n` +
+            `• Click "OK" to save text content only (works for AI matching)\n` +
+            `• Click "Cancel" to configure DOCX support first (see README)\n\n` +
+            `Save text content now?`
+          )
+          
+          if (proceed) {
+            // Save only the text content to database without file storage
+            const { error: dbError } = await supabase
+              .from('resumes')
+              .insert([
+                {
+                  user_id: user.id,
+                  filename: `${file.name} (text-only)`,
+                  file_path: '', // No file stored
+                  file_size: file.size,
+                  file_type: 'text/plain', // Store as text type
+                  content,
+                  embedding,
+                },
+              ])
 
-      // Save to database
+            if (dbError) throw dbError
+
+            await updateStorageStats()
+            fetchResumes()
+            showNotification(`Successfully saved text content from ${file.name} (file not stored)`, 'success')
+            return
+          } else {
+            showNotification('Upload cancelled. Please configure DOCX support in Supabase Storage.', 'info')
+            return
+          }
+        }
+        
+        // Provide specific error messages for other errors
+        if (uploadError.message?.includes('size')) {
+          throw new Error('File size exceeds the allowed limit.')
+        } else if (uploadError.message?.includes('duplicate')) {
+          throw new Error('A file with this name already exists.')
+        }
+        
+        throw new Error(`Upload failed: ${uploadError.message}`)
+      }
+
+      // Save to database with file storage
       const { error: dbError } = await supabase
         .from('resumes')
         .insert([
@@ -278,9 +397,16 @@ export function FilesPage() {
       
       // Refresh the list
       fetchResumes()
+      
+      showNotification(`Successfully uploaded ${file.name}`, 'success')
     } catch (error) {
       console.error('Error uploading file:', error)
-      alert('Error uploading file. Please try again.')
+      
+      if (error instanceof Error) {
+        showNotification(`Upload failed: ${error.message}`, 'error')
+      } else {
+        showNotification('Error uploading file. Please try again.', 'error')
+      }
     } finally {
       setUploading(false)
     }
@@ -323,8 +449,10 @@ export function FilesPage() {
     if (!confirm('Are you sure you want to delete this resume?')) return
 
     try {
-      // Delete from storage
-      await supabase.storage.from('resumes').remove([filePath])
+      // Delete from storage only if file exists
+      if (filePath && filePath !== '') {
+        await supabase.storage.from('resumes').remove([filePath])
+      }
 
       // Delete from database
       const { error } = await supabase
@@ -339,14 +467,47 @@ export function FilesPage() {
       
       // Refresh the list
       fetchResumes()
+      
+      showNotification('Resume deleted successfully', 'success')
     } catch (error) {
       console.error('Error deleting resume:', error)
-      alert('Error deleting resume. Please try again.')
+      showNotification('Error deleting resume. Please try again.', 'error')
     }
   }
 
-  const viewResume = async (filePath: string) => {
+  const viewResume = async (filePath: string, content?: string, filename?: string) => {
     try {
+      // If no file path (text-only entry), show content in a new window
+      if (!filePath || filePath === '') {
+        if (content) {
+          const newWindow = window.open('', '_blank')
+          if (newWindow) {
+            newWindow.document.write(`
+              <html>
+                <head>
+                  <title>${filename || 'Resume Content'}</title>
+                  <style>
+                    body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
+                    h1 { color: #333; border-bottom: 2px solid #333; padding-bottom: 10px; }
+                    .content { white-space: pre-wrap; background: #f5f5f5; padding: 20px; border-radius: 8px; }
+                  </style>
+                </head>
+                <body>
+                  <h1>${filename || 'Resume Content'}</h1>
+                  <p><em>Note: This is text-only content. The original file was not stored.</em></p>
+                  <div class="content">${content}</div>
+                </body>
+              </html>
+            `)
+            newWindow.document.close()
+          }
+        } else {
+          showNotification('No content available to display', 'error')
+        }
+        return
+      }
+
+      // Normal file viewing for stored files
       const { data } = await supabase.storage
         .from('resumes')
         .createSignedUrl(filePath, 3600)
@@ -356,7 +517,7 @@ export function FilesPage() {
       }
     } catch (error) {
       console.error('Error viewing resume:', error)
-      alert('Error viewing resume. Please try again.')
+      showNotification('Error viewing resume. Please try again.', 'error')
     }
   }
 
@@ -377,14 +538,20 @@ export function FilesPage() {
 
     const files = Array.from(e.dataTransfer.files)
     files.forEach(file => {
-      if (file.type === 'application/pdf' || file.type === 'text/plain') {
-        if (file.size <= 500 * 1024 * 1024) { // 500MB limit
+      const allowedTypes = [
+        'application/pdf',
+        'text/plain',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      ]
+      
+      if (allowedTypes.includes(file.type)) {
+        if (file.size <= 100 * 1024 * 1024) { // 100MB limit
           uploadFile(file)
         } else {
-          alert('File size exceeds 500MB limit')
+          alert('File size exceeds 100MB limit')
         }
       } else {
-        alert('Only PDF and TXT files are allowed')
+        alert('Only PDF, DOCX, and TXT files are allowed')
       }
     })
   }
@@ -392,14 +559,20 @@ export function FilesPage() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     files.forEach(file => {
-      if (file.type === 'application/pdf' || file.type === 'text/plain') {
-        if (file.size <= 500 * 1024 * 1024) { // 500MB limit
+      const allowedTypes = [
+        'application/pdf',
+        'text/plain',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      ]
+      
+      if (allowedTypes.includes(file.type)) {
+        if (file.size <= 100 * 1024 * 1024) { // 100MB limit
           uploadFile(file)
         } else {
-          alert('File size exceeds 500MB limit')
+          alert('File size exceeds 100MB limit')
         }
       } else {
-        alert('Only PDF and TXT files are allowed')
+        alert('Only PDF, DOCX, and TXT files are allowed')
       }
     })
   }
@@ -433,8 +606,14 @@ export function FilesPage() {
         <div className="sm:flex-auto">
           <h1 className="text-2xl font-bold text-gray-900">Resume Files</h1>
           <p className="mt-2 text-sm text-gray-700">
-            Upload and manage your resume files. Supports PDF and TXT formats up to 500MB.
+            Upload and manage your resume files. Supports PDF, DOCX, and TXT formats up to 100MB per file.
           </p>
+          {/* <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+            <p className="text-xs text-yellow-800">
+              <strong>Note:</strong> If DOCX uploads fail, you may need to configure your Supabase storage bucket to accept DOCX files. 
+              See the README for setup instructions.
+            </p>
+          </div> */}
         </div>
         <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
           <div className="flex space-x-2">
@@ -486,12 +665,12 @@ export function FilesPage() {
                   type="file"
                   className="sr-only"
                   multiple
-                  accept=".pdf,.txt"
+                  accept=".pdf,.txt,.docx"
                   onChange={handleFileSelect}
                 />
               </label>
               <p className="mt-2 text-xs text-gray-500">
-                PDF, TXT up to 500MB each
+                PDF, DOCX, TXT up to 100MB each
               </p>
             </div>
           </div>
@@ -542,10 +721,15 @@ export function FilesPage() {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center">
-                    <File className="h-8 w-8 text-blue-500" />
+                    <File className={`h-8 w-8 ${resume.file_path ? 'text-blue-500' : 'text-orange-500'}`} />
                     <div className="ml-3">
                       <p className="text-sm font-medium text-gray-900 truncate">
                         {resume.filename}
+                        {!resume.file_path && (
+                          <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
+                            Text Only
+                          </span>
+                        )}
                       </p>
                       <p className="text-xs text-gray-500">
                         {formatFileSize(resume.file_size)} • {new Date(resume.created_at).toLocaleDateString()}
@@ -554,8 +738,9 @@ export function FilesPage() {
                   </div>
                   <div className="flex space-x-2">
                     <button
-                      onClick={() => viewResume(resume.file_path)}
+                      onClick={() => viewResume(resume.file_path, resume.content, resume.filename)}
                       className="text-blue-600 hover:text-blue-800 transition-colors duration-200"
+                      title={resume.file_path ? 'View file' : 'View text content'}
                     >
                       <Eye className="h-4 w-4" />
                     </button>
