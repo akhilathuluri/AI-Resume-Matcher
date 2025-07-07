@@ -144,7 +144,7 @@ export function ChatbotPage() {
         const welcomeMessage: Message = {
           id: 'welcome-' + Date.now(),
           role: 'assistant',
-          content: 'Hello! I\'m your resume matching assistant. Please provide a job description, and I\'ll find the top 10 most relevant resumes from your collection.',
+          content: 'Hello! I\'m your AI career assistant. I can help you with:\n\n• **Resume Matching**: Provide a job description and I\'ll find the most relevant resumes from your collection\n• **Career Guidance**: Answer questions about job searching, interviewing, and career development\n• **Clarifications**: Explain my previous analysis in more detail\n• **General Help**: Discuss workplace advice, salary expectations, and more\n\nWhat would you like to know?',
         }
         setMessages([welcomeMessage])
         // Save welcome message to database
@@ -156,7 +156,7 @@ export function ChatbotPage() {
       const welcomeMessage: Message = {
         id: 'welcome-' + Date.now(),
         role: 'assistant',
-        content: 'Hello! I\'m your resume matching assistant. Please provide a job description, and I\'ll find the top 10 most relevant resumes from your collection.',
+        content: 'Hello! I\'m your AI career assistant. I can help you with:\n\n• **Resume Matching**: Provide a job description and I\'ll find the most relevant resumes from your collection\n• **Career Guidance**: Answer questions about job searching, interviewing, and career development\n• **Clarifications**: Explain my previous analysis in more detail\n• **General Help**: Discuss workplace advice, salary expectations, and more\n\nWhat would you like to know?',
       }
       setMessages([welcomeMessage])
     } finally {
@@ -207,7 +207,7 @@ export function ChatbotPage() {
       const welcomeMessage: Message = {
         id: 'welcome-' + Date.now(),
         role: 'assistant',
-        content: 'Hello! I\'m your resume matching assistant. Please provide a job description, and I\'ll find the top 10 most relevant resumes from your collection.',
+        content: 'Hello! I\'m your AI career assistant. I can help you with:\n\n• **Resume Matching**: Provide a job description and I\'ll find the most relevant resumes from your collection\n• **Career Guidance**: Answer questions about job searching, interviewing, and career development\n• **Clarifications**: Explain my previous analysis in more detail\n• **General Help**: Discuss workplace advice, salary expectations, and more\n\nWhat would you like to know?',
       }
       setMessages([welcomeMessage])
       await saveChatMessage(welcomeMessage)
@@ -329,32 +329,33 @@ export function ChatbotPage() {
     }
   }
 
-  const generateChatResponse = async (jobDescription: string, matchingResumes: any[]) => {
+  const generateChatResponse = async (jobDescription: string, matchingResumes: any[], conversationHistory: Message[]) => {
     try {
-      // Prepare detailed resume information for analysis
-      let resumeDetails = ''
-      if (matchingResumes.length > 0) {
-        resumeDetails = matchingResumes.map((resume, index) => {
+      // Check if this looks like a resume matching request
+      const isResumeMatchingRequest = /\b(job|position|role|candidate|resume|hire|hiring|recruit|skill|experience|qualification|developer|engineer|manager|analyst|designer|consultant)\b/i.test(jobDescription.toLowerCase()) && 
+                                    (jobDescription.length > 20 || /\b(looking for|need|require|seeking|want)\b/i.test(jobDescription.toLowerCase()))
+
+      // If it's a resume matching request and we have resumes
+      if (isResumeMatchingRequest && matchingResumes.length > 0) {
+        // Prepare detailed resume information for analysis
+        const resumeDetails = matchingResumes.map((resume, index) => {
           const content = resume.content || 'Content not available - this may affect analysis accuracy'
           return `**Resume ${index + 1}: ${resume.filename}** (${Math.round(resume.similarity * 100)}% match)\n` +
             `Content: ${content.substring(0, 1500)}${content.length > 1500 ? '...' : ''}\n\n`
         }).join('')
-      } else {
-        return "I couldn't find any resumes in your collection that match this job description. Please make sure you have uploaded some resumes first."
-      }
 
-      const response = await fetch('https://models.inference.ai.azure.com/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_GITHUB_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content: `You are an expert resume analyzer and career consultant. Your job is to provide detailed, specific analysis of how well resumes match job descriptions.
+        const response = await fetch('https://models.inference.ai.azure.com/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${import.meta.env.VITE_GITHUB_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [
+              {
+                role: 'system',
+                content: `You are an expert resume analyzer and career consultant. Your job is to provide detailed, specific analysis of how well resumes match job descriptions.
 
 CRITICAL INSTRUCTIONS:
 - Always analyze the ACTUAL content of each resume against the SPECIFIC job requirements
@@ -389,10 +390,10 @@ FORMAT YOUR RESPONSE LIKE THIS:
 
 ### Hiring Recommendations:
 [Provide specific recommendations based on the analysis]`,
-            },
-            {
-              role: 'user',
-              content: `Please analyze these resumes against this job description and explain the match percentages.
+              },
+              {
+                role: 'user',
+                content: `Please analyze these resumes against this job description and explain the match percentages.
 
 **JOB DESCRIPTION:**
 ${jobDescription}
@@ -405,22 +406,105 @@ For each resume, I need you to:
 2. Identify what's MISSING or doesn't match
 3. Explain why the match percentage is what it is
 4. Use actual content from the resumes and job description in your analysis`,
-            },
-          ],
-          max_tokens: 1500,
-          temperature: 0.3,
-        }),
-      })
+              },
+            ],
+            max_tokens: 1500,
+            temperature: 0.3,
+          }),
+        })
 
-      if (!response.ok) {
-        throw new Error('Failed to generate chat response')
+        if (!response.ok) {
+          throw new Error('Failed to generate chat response')
+        }
+
+        const data = await response.json()
+        return data.choices[0]?.message?.content || 'I found matching resumes for your job description.'
+      } 
+      // If it's a resume matching request but no resumes found
+      else if (isResumeMatchingRequest && matchingResumes.length === 0) {
+        return "I couldn't find any resumes in your collection that match this job description. Please make sure you have uploaded some resumes first, or the job requirements might be very specific and don't match your current resume collection."
       }
+      // Handle general conversation, questions about previous responses, or non-resume topics
+      else {
+        // Prepare conversation history for context, including resume data from previous analyses
+        const recentMessages = conversationHistory.slice(-8).map(msg => {
+          let content = msg.content
+          
+          // If this message has resume matches, include them in the context with more detail
+          if (msg.resumes && msg.resumes.length > 0) {
+            const resumeContext = msg.resumes.map(resume => {
+              const contentPreview = resume.content ? resume.content.substring(0, 800) + '...' : 'Content not available'
+              return `${resume.filename} (${Math.round(resume.similarity * 100)}% match) - Resume content: ${contentPreview}`
+            }).join('\n\n')
+            
+            content += '\n\n[Previous resume analysis context:\n' + resumeContext + ']'
+          }
+          
+          return {
+            role: msg.role,
+            content: content
+          }
+        })
 
-      const data = await response.json()
-      return data.choices[0]?.message?.content || 'I found matching resumes for your job description.'
+        const response = await fetch('https://models.inference.ai.azure.com/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${import.meta.env.VITE_GITHUB_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [
+              {
+                role: 'system',
+                content: `You are a helpful AI assistant specializing in career guidance, HR, recruitment, and resume analysis. You can:
+
+1. **Answer general questions** about careers, job searching, interviewing, resume writing, workplace advice, etc.
+2. **Clarify previous responses** - explain your analysis in more detail, answer follow-up questions about SPECIFIC resumes and analyses you just provided
+3. **Provide career guidance** - salary expectations, career paths, skill development, etc.
+4. **Help with job descriptions** - explain requirements, suggest improvements, etc.
+5. **Resume matching** - when users provide job descriptions, you analyze their uploaded resumes
+
+CRITICAL INSTRUCTIONS FOR FOLLOW-UP QUESTIONS:
+- When users ask about "that resume" or "the first resume" or "why did X get Y%", they are referring to resumes from your IMMEDIATELY PREVIOUS analysis
+- The conversation history includes [Previous resume analysis context] sections with actual resume content and match percentages
+- USE THE ACTUAL RESUME CONTENT PROVIDED in the context to explain your previous analysis
+- NEVER create new fake resume analyses - only reference and explain what you actually analyzed before using the provided resume content
+- If asked to clarify match percentages, explain based on the SPECIFIC resume content and job requirements from the conversation history
+- If you don't have enough context from previous messages, ask the user to clarify which specific analysis they're referring to
+- Maintain consistency with your previous analysis - don't contradict yourself
+
+EXAMPLE: If asked "Why did that first resume only get 51%?", look at the conversation history for the resume analysis context, find the specific resume with 51% match, and explain based on that resume's actual content versus the job requirements.
+
+FORMATTING:
+- Use markdown formatting for clarity
+- Be specific and factual when referencing previous analyses
+- Provide actionable advice when possible
+- Be encouraging and professional
+
+If the user asks about resume matching specifically, tell them to provide a job description and you'll analyze their uploaded resumes against it.`,
+              },
+              ...recentMessages,
+              {
+                role: 'user',
+                content: jobDescription
+              }
+            ],
+            max_tokens: 1000,
+            temperature: 0.3,
+          }),
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to generate chat response')
+        }
+
+        const data = await response.json()
+        return data.choices[0]?.message?.content || 'I\'m here to help with your questions!'
+      }
     } catch (error) {
       console.error('Error generating chat response:', error)
-      return 'I found matching resumes for your job description. Please review them below.'
+      return 'Sorry, I encountered an error while processing your request. Please try again.'
     }
   }
 
@@ -442,11 +526,11 @@ For each resume, I need you to:
     await saveChatMessage(userMessage)
 
     try {
-      // Find similar resumes
+      // Find similar resumes only if it looks like a job description
       const matchingResumes = await findSimilarResumes(input)
       
-      // Generate AI response
-      const aiResponse = await generateChatResponse(input, matchingResumes)
+      // Generate AI response with conversation context
+      const aiResponse = await generateChatResponse(input, matchingResumes, messages)
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -525,9 +609,9 @@ For each resume, I need you to:
     <div className="px-4 sm:px-6 lg:px-8 h-full">
       <div className="sm:flex sm:items-center">
         <div className="sm:flex-auto">
-          <h1 className="text-2xl font-bold text-gray-900">AI Resume Matcher</h1>
+          <h1 className="text-2xl font-bold text-gray-900">AI Career Assistant</h1>
           <p className="mt-2 text-sm text-gray-700">
-            Describe a job position and I'll find the most relevant resumes from your collection.
+            Your AI-powered career helper. Ask questions, get resume matches, or seek career guidance.
           </p>
         </div>
         <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
@@ -663,7 +747,7 @@ For each resume, I need you to:
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Describe the job position you're looking to fill..."
+              placeholder="Ask me anything about careers, or describe a job position for resume matching..."
               className="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               disabled={loading}
             />
