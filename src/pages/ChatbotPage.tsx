@@ -14,6 +14,7 @@ interface Message {
     filename: string
     similarity: number
     file_path: string
+    content?: string
   }>
 }
 
@@ -308,6 +309,7 @@ export function ChatbotPage() {
             filename: resume.filename,
             similarity: similarity,
             file_path: resume.file_path,
+            content: resume.content, // Include content for AI analysis
           }
         })
         .filter(Boolean)
@@ -319,6 +321,7 @@ export function ChatbotPage() {
         filename: string
         similarity: number
         file_path: string
+        content: string
       }>
     } catch (error) {
       console.error('Error finding similar resumes:', error)
@@ -328,6 +331,18 @@ export function ChatbotPage() {
 
   const generateChatResponse = async (jobDescription: string, matchingResumes: any[]) => {
     try {
+      // Prepare detailed resume information for analysis
+      let resumeDetails = ''
+      if (matchingResumes.length > 0) {
+        resumeDetails = matchingResumes.map((resume, index) => {
+          const content = resume.content || 'Content not available - this may affect analysis accuracy'
+          return `**Resume ${index + 1}: ${resume.filename}** (${Math.round(resume.similarity * 100)}% match)\n` +
+            `Content: ${content.substring(0, 1500)}${content.length > 1500 ? '...' : ''}\n\n`
+        }).join('')
+      } else {
+        return "I couldn't find any resumes in your collection that match this job description. Please make sure you have uploaded some resumes first."
+      }
+
       const response = await fetch('https://models.inference.ai.azure.com/chat/completions', {
         method: 'POST',
         headers: {
@@ -339,25 +354,61 @@ export function ChatbotPage() {
           messages: [
             {
               role: 'system',
-              content: `You are a helpful assistant that analyzes job descriptions and matching resumes. 
-              
-Please format your responses using markdown for better readability:
-- Use **bold** for important points and key qualifications
-- Use bullet points (- or *) to list skills, requirements, or recommendations
-- Use numbered lists (1., 2., etc.) for step-by-step analysis or rankings
-- Use ## headers for different sections of your analysis
-- Use > blockquotes for key insights or recommendations
-- Keep paragraphs concise and well-spaced
+              content: `You are an expert resume analyzer and career consultant. Your job is to provide detailed, specific analysis of how well resumes match job descriptions.
 
-Provide insights about why the matching resumes are good fits and what makes them suitable for the role. Focus on specific skills, experience, and qualifications that align with the job requirements.`,
+CRITICAL INSTRUCTIONS:
+- Always analyze the ACTUAL content of each resume against the SPECIFIC job requirements
+- For each resume, provide concrete examples of what MATCHES and what DOESN'T MATCH
+- Quote specific skills, experiences, and keywords from both the job description and resumes
+- Explain WHY the similarity percentage is what it is based on the content
+- Be specific and factual - avoid generic responses
+- Use markdown formatting for clarity
+- If match percentages seem low, explain exactly what's missing
+
+FORMAT YOUR RESPONSE LIKE THIS:
+## Resume Analysis for Job Position
+
+### Job Requirements Summary:
+- [Extract and list key requirements from the job description]
+
+### Detailed Resume Analysis:
+
+#### Resume 1: [filename] - [X]% Match
+**What Matches:**
+- [Quote specific skills/experience from resume that align with job requirements]
+- [Mention specific technologies, years of experience, etc.]
+
+**What Doesn't Match:**
+- [List specific missing requirements]
+- [Mention gaps in experience or skills]
+
+**Why [X]% Match:**
+[Explain the scoring based on how many requirements are met vs missing]
+
+[Repeat for each resume]
+
+### Hiring Recommendations:
+[Provide specific recommendations based on the analysis]`,
             },
             {
               role: 'user',
-              content: `Job Description: ${jobDescription}\n\nI found ${matchingResumes.length} matching resumes. Please provide a detailed analysis of why these resumes might be good matches for this job description.`,
+              content: `Please analyze these resumes against this job description and explain the match percentages.
+
+**JOB DESCRIPTION:**
+${jobDescription}
+
+**RESUMES TO ANALYZE:**
+${resumeDetails}
+
+For each resume, I need you to:
+1. Identify specific skills/experience that MATCH the job requirements
+2. Identify what's MISSING or doesn't match
+3. Explain why the match percentage is what it is
+4. Use actual content from the resumes and job description in your analysis`,
             },
           ],
-          max_tokens: 800,
-          temperature: 0.7,
+          max_tokens: 1500,
+          temperature: 0.3,
         }),
       })
 
@@ -424,8 +475,39 @@ Provide insights about why the matching resumes are good fits and what makes the
     }
   }
 
-  const viewResume = async (filePath: string) => {
+  const viewResume = async (filePath: string, content?: string, filename?: string) => {
     try {
+      // If no file path (text-only entry), show content in a new window
+      if (!filePath || filePath === '') {
+        if (content) {
+          const newWindow = window.open('', '_blank')
+          if (newWindow) {
+            newWindow.document.write(`
+              <html>
+                <head>
+                  <title>${filename || 'Resume Content'}</title>
+                  <style>
+                    body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
+                    h1 { color: #333; border-bottom: 2px solid #333; padding-bottom: 10px; }
+                    .content { white-space: pre-wrap; background: #f5f5f5; padding: 20px; border-radius: 8px; }
+                  </style>
+                </head>
+                <body>
+                  <h1>${filename || 'Resume Content'}</h1>
+                  <p><em>Note: This is text-only content. The original file was not stored.</em></p>
+                  <div class="content">${content}</div>
+                </body>
+              </html>
+            `)
+            newWindow.document.close()
+          }
+        } else {
+          alert('No content available to display')
+        }
+        return
+      }
+
+      // Normal file viewing for stored files
       const { data } = await supabase.storage
         .from('resumes')
         .createSignedUrl(filePath, 3600)
@@ -537,7 +619,7 @@ Provide insights about why the matching resumes are good fits and what makes the
                               </span>
                             </div>
                             <button
-                              onClick={() => viewResume(resume.file_path)}
+                              onClick={() => viewResume(resume.file_path, resume.content, resume.filename)}
                               className="text-blue-600 hover:text-blue-800 transition-colors duration-200"
                             >
                               <ExternalLink className="w-4 h-4" />
