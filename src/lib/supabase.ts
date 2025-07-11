@@ -105,6 +105,117 @@ export type Database = {
           updated_at?: string
         }
       }
+      communications: {
+        Row: {
+          id: string
+          user_id: string
+          title: string
+          message: string
+          communication_type: 'email' | 'sms' | 'note' | 'bulk_update'
+          status: 'draft' | 'sent' | 'delivered' | 'failed'
+          total_recipients: number
+          successful_deliveries: number
+          failed_deliveries: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          title: string
+          message: string
+          communication_type: 'email' | 'sms' | 'note' | 'bulk_update'
+          status?: 'draft' | 'sent' | 'delivered' | 'failed'
+          total_recipients?: number
+          successful_deliveries?: number
+          failed_deliveries?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          title?: string
+          message?: string
+          communication_type?: 'email' | 'sms' | 'note' | 'bulk_update'
+          status?: 'draft' | 'sent' | 'delivered' | 'failed'
+          total_recipients?: number
+          successful_deliveries?: number
+          failed_deliveries?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      communication_recipients: {
+        Row: {
+          id: string
+          communication_id: string
+          resume_id: string
+          user_id: string
+          delivery_status: 'pending' | 'sent' | 'delivered' | 'failed'
+          delivered_at: string | null
+          error_message: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          communication_id: string
+          resume_id: string
+          user_id: string
+          delivery_status?: 'pending' | 'sent' | 'delivered' | 'failed'
+          delivered_at?: string | null
+          error_message?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          communication_id?: string
+          resume_id?: string
+          user_id?: string
+          delivery_status?: 'pending' | 'sent' | 'delivered' | 'failed'
+          delivered_at?: string | null
+          error_message?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      user_activities: {
+        Row: {
+          id: string
+          user_id: string
+          activity_type: 'mass_export' | 'bulk_communication' | 'bulk_delete' | 'data_cleanup'
+          description: string
+          items_count: number
+          metadata: any | null
+          status: 'pending' | 'in_progress' | 'completed' | 'failed'
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          activity_type: 'mass_export' | 'bulk_communication' | 'bulk_delete' | 'data_cleanup'
+          description: string
+          items_count?: number
+          metadata?: any | null
+          status?: 'pending' | 'in_progress' | 'completed' | 'failed'
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          activity_type?: 'mass_export' | 'bulk_communication' | 'bulk_delete' | 'data_cleanup'
+          description?: string
+          items_count?: number
+          metadata?: any | null
+          status?: 'pending' | 'in_progress' | 'completed' | 'failed'
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
   }
 }
