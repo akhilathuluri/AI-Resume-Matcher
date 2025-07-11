@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useEffect } from 'react'
-import { Upload, File, Trash2, Eye, Search, RefreshCw } from 'lucide-react'
+import { Upload, File, Trash2, Eye, Search, RefreshCw, Mail, MessageSquare, FileDown, Users } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { sendBulkEmail, extractEmailFromContent, validateEmail, type EmailResult } from '../lib/emailServiceBrowser'
 import * as pdfjsLib from 'pdfjs-dist'
 import mammoth from 'mammoth'
 
@@ -26,6 +27,17 @@ export function FilesPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [dragActive, setDragActive] = useState(false)
   const [notification, setNotification] = useState<{message: string, type: 'success' | 'error' | 'info'} | null>(null)
+  
+  // New state for bulk operations
+  const [selectedResumes, setSelectedResumes] = useState<string[]>([])
+  const [showBulkCommunication, setShowBulkCommunication] = useState(false)
+  const [showCommunicationHistory, setShowCommunicationHistory] = useState(false)
+  const [bulkMessage, setBulkMessage] = useState('')
+  const [bulkTitle, setBulkTitle] = useState('')
+  const [communications, setCommunications] = useState<any[]>([])
+  const [loadingCommunications, setLoadingCommunications] = useState(false)
+  const [sendRealEmails, setSendRealEmails] = useState(false)
+  const [emailSending, setEmailSending] = useState(false)
 
   // Show notification
   const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -585,6 +597,371 @@ export function FilesPage() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
   }
 
+  // Bulk operations functions
+  const toggleResumeSelection = (resumeId: string) => {
+    setSelectedResumes(prev => 
+      prev.includes(resumeId) 
+        ? prev.filter(id => id !== resumeId)
+        : [...prev, resumeId]
+    )
+  }
+
+  const selectAllResumes = () => {
+    setSelectedResumes(filteredResumes.map(r => r.id))
+  }
+
+  const clearSelection = () => {
+    setSelectedResumes([])
+  }
+
+  // Mass export function - Download as PDF files
+  const handleMassExport = async () => {
+    if (!user || selectedResumes.length === 0) return
+
+    try {
+      showNotification(`Preparing to download ${selectedResumes.length} resume files...`, 'info')
+
+      const selectedResumeData = resumes.filter(r => selectedResumes.includes(r.id))
+      let downloadedCount = 0
+      let errorCount = 0
+
+      for (const resume of selectedResumeData) {
+        try {
+          if (resume.file_path && resume.file_path !== '') {
+            // Download original file from Supabase storage
+            const { data, error } = await supabase.storage
+              .from('resumes')
+              .download(resume.file_path)
+
+            if (error) throw error
+
+            // Create download link for the original file
+            const url = URL.createObjectURL(data)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = resume.filename
+            document.body.appendChild(a)
+            a.click()
+            document.body.removeChild(a)
+            URL.revokeObjectURL(url)
+            
+            downloadedCount++
+          } else if (resume.content) {
+            // For text-only entries, convert content to PDF
+            await downloadContentAsPDF(resume.content, resume.filename)
+            downloadedCount++
+          } else {
+            console.warn(`No file or content available for resume: ${resume.filename}`)
+            errorCount++
+          }
+
+          // Small delay between downloads to avoid overwhelming the browser
+          if (selectedResumeData.length > 1) {
+            await new Promise(resolve => setTimeout(resolve, 500))
+          }
+        } catch (error) {
+          console.error(`Error downloading ${resume.filename}:`, error)
+          errorCount++
+        }
+      }
+
+      // Log the activity
+      await supabase
+        .from('user_activities')
+        .insert([{
+          user_id: user.id,
+          activity_type: 'mass_export',
+          description: `Downloaded ${downloadedCount} resumes as files${errorCount > 0 ? `, ${errorCount} failed` : ''}`,
+          items_count: downloadedCount,
+          metadata: {
+            resumeIds: selectedResumes,
+            exportFormat: 'files',
+            downloadedCount,
+            errorCount,
+            exportedAt: new Date().toISOString()
+          }
+        }])
+
+      if (errorCount === 0) {
+        showNotification(`Successfully downloaded ${downloadedCount} resume files`, 'success')
+      } else {
+        showNotification(
+          `Downloaded ${downloadedCount} files successfully${errorCount > 0 ? `, ${errorCount} failed` : ''}`, 
+          downloadedCount > 0 ? 'info' : 'error'
+        )
+      }
+      
+      clearSelection()
+    } catch (error) {
+      console.error('Error exporting resumes:', error)
+      showNotification('Error downloading resumes. Please try again.', 'error')
+    }
+  }
+
+  // Helper function to convert text content to PDF
+  const downloadContentAsPDF = async (content: string, filename: string) => {
+    try {
+      // For text-only content, we'll create a simple HTML document and convert to PDF
+      // This is a basic implementation - you could enhance this with better formatting
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>${filename}</title>
+          <style>
+            body { 
+              font-family: Arial, sans-serif; 
+              line-height: 1.6; 
+              margin: 40px; 
+              color: #333;
+            }
+            .header { 
+              border-bottom: 2px solid #333; 
+              padding-bottom: 10px; 
+              margin-bottom: 20px; 
+            }
+            .content { 
+              white-space: pre-wrap; 
+              font-size: 12px;
+            }
+            .footer {
+              margin-top: 30px;
+              padding-top: 10px;
+              border-top: 1px solid #ccc;
+              font-size: 10px;
+              color: #666;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>${filename.replace(/\.(txt|docx)$/i, '')}</h1>
+          </div>
+          <div class="content">${content.replace(/\n/g, '<br>')}</div>
+          <div class="footer">
+            <p>Exported from ResumeAI on ${new Date().toLocaleDateString()}</p>
+          </div>
+        </body>
+        </html>
+      `
+
+      // Create a blob with HTML content
+      const blob = new Blob([htmlContent], { type: 'text/html' })
+      const url = URL.createObjectURL(blob)
+      
+      // Open in new window for printing/saving as PDF
+      const newWindow = window.open(url, '_blank')
+      if (newWindow) {
+        // Wait for content to load, then trigger print dialog
+        newWindow.onload = () => {
+          setTimeout(() => {
+            newWindow.print()
+          }, 500)
+        }
+      }
+      
+      // Clean up the URL after a delay
+      setTimeout(() => {
+        URL.revokeObjectURL(url)
+      }, 1000)
+
+      // Also offer direct download of HTML file as fallback
+      const downloadFilename = filename.replace(/\.(txt|docx)$/i, '.html')
+      const a = document.createElement('a')
+      a.href = url
+      a.download = downloadFilename
+      
+      // Don't auto-click for HTML download, just make it available
+      // User can right-click the link if they want the HTML file
+      
+    } catch (error) {
+      console.error('Error creating PDF from content:', error)
+      
+      // Fallback: download as text file
+      const blob = new Blob([content], { type: 'text/plain' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename.replace(/\.(pdf|docx)$/i, '.txt')
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    }
+  }
+
+  // Bulk communication function
+  const handleBulkCommunication = async () => {
+    if (!user || selectedResumes.length === 0 || !bulkTitle.trim() || !bulkMessage.trim()) {
+      showNotification('Please fill in title, message, and select candidates', 'error')
+      return
+    }
+
+    setEmailSending(true)
+    let emailResults: EmailResult[] = []
+    let successful_deliveries = 0
+    let failed_deliveries = 0
+
+    try {
+      // If sending real emails, extract email addresses and send emails
+      if (sendRealEmails) {
+        showNotification('Extracting email addresses and sending emails...', 'info')
+        
+        // Get selected resumes with content to extract emails
+        const selectedResumeData = resumes.filter(r => selectedResumes.includes(r.id))
+        const emailAddresses: string[] = []
+
+        // Extract email addresses from resume content
+        for (const resume of selectedResumeData) {
+          if (resume.content) {
+            const email = extractEmailFromContent(resume.content)
+            if (email && validateEmail(email)) {
+              emailAddresses.push(email)
+            }
+          }
+        }
+
+        if (emailAddresses.length === 0) {
+          showNotification('No valid email addresses found in selected resumes', 'error')
+          setEmailSending(false)
+          return
+        }
+
+        // Send bulk emails
+        showNotification(`Sending emails to ${emailAddresses.length} recipients...`, 'info')
+        emailResults = await sendBulkEmail({
+          to: emailAddresses,
+          subject: bulkTitle.trim(),
+          message: bulkMessage.trim(),
+          senderName: 'ResumeAI Team', // You can make this configurable
+        })
+
+        // Count successful and failed deliveries
+        successful_deliveries = emailResults.filter(r => r.success).length
+        failed_deliveries = emailResults.filter(r => !r.success).length
+
+        if (successful_deliveries === 0) {
+          showNotification('Failed to send any emails. Please check your email configuration.', 'error')
+          setEmailSending(false)
+          return
+        }
+      } else {
+        // Mock successful delivery for tracking only
+        successful_deliveries = selectedResumes.length
+        failed_deliveries = 0
+      }
+
+      // Create communication record
+      const { data: communication, error: commError } = await supabase
+        .from('communications')
+        .insert([{
+          user_id: user.id,
+          title: bulkTitle.trim(),
+          message: bulkMessage.trim(),
+          communication_type: sendRealEmails ? 'email' : 'bulk_update',
+          status: failed_deliveries === 0 ? 'sent' : (successful_deliveries > 0 ? 'sent' : 'failed'),
+          total_recipients: selectedResumes.length,
+          successful_deliveries,
+          failed_deliveries
+        }])
+        .select()
+        .single()
+
+      if (commError) throw commError
+
+      // Create recipient records with actual delivery status
+      const recipients = selectedResumes.map((resumeId, index) => {
+        const emailResult = emailResults[index]
+        return {
+          communication_id: communication.id,
+          resume_id: resumeId,
+          user_id: user.id,
+          delivery_status: sendRealEmails 
+            ? (emailResult?.success ? 'delivered' : 'failed') 
+            : 'delivered',
+          delivered_at: sendRealEmails && emailResult?.success 
+            ? new Date().toISOString() 
+            : (sendRealEmails ? null : new Date().toISOString()),
+          error_message: sendRealEmails && !emailResult?.success 
+            ? emailResult?.error 
+            : null
+        }
+      })
+
+      const { error: recipientError } = await supabase
+        .from('communication_recipients')
+        .insert(recipients)
+
+      if (recipientError) throw recipientError
+
+      // Show appropriate success message
+      if (sendRealEmails) {
+        if (failed_deliveries === 0) {
+          showNotification(`Successfully sent emails to all ${successful_deliveries} candidates`, 'success')
+        } else {
+          showNotification(
+            `Sent ${successful_deliveries} emails successfully, ${failed_deliveries} failed`, 
+            successful_deliveries > 0 ? 'info' : 'error'
+          )
+        }
+      } else {
+        showNotification(`Bulk update recorded for ${selectedResumes.length} candidates`, 'success')
+      }
+
+      setBulkTitle('')
+      setBulkMessage('')
+      setShowBulkCommunication(false)
+      setSendRealEmails(false)
+      clearSelection()
+      await fetchCommunications() // Refresh communications list
+    } catch (error) {
+      console.error('Error sending bulk communication:', error)
+      showNotification('Error sending bulk communication. Please try again.', 'error')
+    } finally {
+      setEmailSending(false)
+    }
+  }
+
+  // Fetch communications history
+  const fetchCommunications = async () => {
+    if (!user) return
+
+    setLoadingCommunications(true)
+    try {
+      const { data, error } = await supabase
+        .from('communications')
+        .select(`
+          *,
+          communication_recipients (
+            resume_id,
+            delivery_status,
+            delivered_at,
+            resumes (
+              filename
+            )
+          )
+        `)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setCommunications(data || [])
+    } catch (error) {
+      console.error('Error fetching communications:', error)
+      showNotification('Error loading communication history', 'error')
+    } finally {
+      setLoadingCommunications(false)
+    }
+  }
+
+  // Load communications when component mounts
+  useEffect(() => {
+    if (user) {
+      fetchCommunications()
+    }
+  }, [user])
+
   const filteredResumes = resumes.filter(resume =>
     resume.filename.toLowerCase().includes(searchTerm.toLowerCase())
   )
@@ -617,6 +994,45 @@ export function FilesPage() {
         </div>
         <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
           <div className="flex space-x-2">
+            {selectedResumes.length > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleMassExport}
+                  className="inline-flex items-center px-3 py-2 border border-green-300 shadow-sm text-sm leading-4 font-medium rounded-md text-green-700 bg-green-50 hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                  title={`Export ${selectedResumes.length} selected resumes`}
+                >
+                  <FileDown className="h-4 w-4 mr-2" />
+                  Export ({selectedResumes.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowBulkCommunication(true)}
+                  className="inline-flex items-center px-3 py-2 border border-blue-300 shadow-sm text-sm leading-4 font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  title={`Send update to ${selectedResumes.length} candidates`}
+                >
+                  <Mail className="h-4 w-4 mr-2" />
+                  Bulk Update ({selectedResumes.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  className="inline-flex items-center px-2 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                  title="Clear selection"
+                >
+                  ✕
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowCommunicationHistory(true)}
+              className="inline-flex items-center px-3 py-2 border border-purple-300 shadow-sm text-sm leading-4 font-medium rounded-md text-purple-700 bg-purple-50 hover:bg-purple-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+              title="View communication history"
+            >
+              <MessageSquare className="h-4 w-4 mr-2" />
+              History
+            </button>
             <button
               type="button"
               onClick={cleanupOrphanedRecords}
@@ -698,6 +1114,36 @@ export function FilesPage() {
         </div>
       </div>
 
+      {/* Selection Controls */}
+      {filteredResumes.length > 0 && (
+        <div className="mt-4 flex items-center justify-between bg-gray-50 px-4 py-2 rounded-md">
+          <div className="flex items-center space-x-4">
+            <label className="flex items-center">
+              <input
+                type="checkbox"
+                checked={selectedResumes.length === filteredResumes.length}
+                onChange={(e) => e.target.checked ? selectAllResumes() : clearSelection()}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="ml-2 text-sm text-gray-700">
+                Select All ({filteredResumes.length})
+              </span>
+            </label>
+            {selectedResumes.length > 0 && (
+              <span className="text-sm text-blue-600 font-medium">
+                {selectedResumes.length} selected
+              </span>
+            )}
+          </div>
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-500">
+              <Users className="h-4 w-4 inline mr-1" />
+              {filteredResumes.length} candidates
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Resume List */}
       <div className="mt-8">
         {loading ? (
@@ -717,9 +1163,21 @@ export function FilesPage() {
             {filteredResumes.map((resume) => (
               <div
                 key={resume.id}
-                className="relative bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow duration-200"
+                className={`relative bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow duration-200 ${
+                  selectedResumes.includes(resume.id) ? 'ring-2 ring-blue-500 bg-blue-50' : ''
+                }`}
               >
-                <div className="flex items-center justify-between">
+                {/* Selection checkbox */}
+                <div className="absolute top-4 left-4">
+                  <input
+                    type="checkbox"
+                    checked={selectedResumes.includes(resume.id)}
+                    onChange={() => toggleResumeSelection(resume.id)}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between ml-8">
                   <div className="flex items-center">
                     <File className={`h-8 w-8 ${resume.file_path ? 'text-blue-500' : 'text-orange-500'}`} />
                     <div className="ml-3">
@@ -757,6 +1215,204 @@ export function FilesPage() {
           </div>
         )}
       </div>
+
+      {/* Bulk Communication Modal */}
+      {showBulkCommunication && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Send Bulk Update to {selectedResumes.length} Candidates
+                </h3>
+                <button
+                  onClick={() => setShowBulkCommunication(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Update Title
+                  </label>
+                  <input
+                    type="text"
+                    value={bulkTitle}
+                    onChange={(e) => setBulkTitle(e.target.value)}
+                    placeholder="e.g., Application Status Update, Interview Invitation..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Message
+                  </label>
+                  <textarea
+                    value={bulkMessage}
+                    onChange={(e) => setBulkMessage(e.target.value)}
+                    placeholder="Enter your update message for the selected candidates..."
+                    rows={6}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* Email sending option */}
+                <div className="border rounded-md p-4 bg-gray-50">
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      id="sendRealEmails"
+                      checked={sendRealEmails}
+                      onChange={(e) => setSendRealEmails(e.target.checked)}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <label htmlFor="sendRealEmails" className="text-sm font-medium text-gray-700">
+                      📧 Send real emails to candidates
+                    </label>
+                  </div>
+                  {sendRealEmails && (
+                    <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                      <p className="text-sm text-yellow-800">
+                        <strong>⚙️ Email Setup Options:</strong> 
+                        <br />
+                        <strong>Option 1 (Recommended):</strong> EmailJS - Browser-compatible
+                        <br />• Sign up at <a href="https://emailjs.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">emailjs.com</a>
+                        <br />• Add <code>VITE_EMAILJS_SERVICE_ID</code>, <code>VITE_EMAILJS_TEMPLATE_ID</code>, <code>VITE_EMAILJS_PUBLIC_KEY</code>
+                        <br />• Restart dev server after adding variables
+                        <br />
+                        <strong>Option 2 (Fallback):</strong> Opens your default email client
+                        <br />• Works without setup for testing
+                        <br />• Emails will be extracted automatically from resume content
+                        <br />
+                        {!import.meta.env.VITE_EMAILJS_SERVICE_ID && (
+                          <span className="text-orange-600">
+                            <br />⚠️ <strong>EmailJS not configured</strong> - will use email client fallback
+                          </span>
+                        )}
+                        {import.meta.env.VITE_EMAILJS_SERVICE_ID && (
+                          <span className="text-green-600">
+                            <br />✅ <strong>EmailJS configured</strong> - ready for professional email sending
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  )}
+                </div>
+                
+                {!sendRealEmails ? (
+                  <div className="bg-blue-50 p-3 rounded-md">
+                    <p className="text-sm text-blue-800">
+                      <strong>📋 Tracking Mode:</strong> This will create a communication record for tracking purposes only. 
+                      No actual emails will be sent.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-green-50 p-3 rounded-md">
+                    <p className="text-sm text-green-800">
+                      <strong>📧 Email Mode:</strong> Real emails will be sent to candidates. 
+                      Email addresses will be automatically extracted from resume content.
+                    </p>
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex justify-end space-x-3 mt-6">
+                <button
+                  onClick={() => setShowBulkCommunication(false)}
+                  disabled={emailSending}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-md"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleBulkCommunication}
+                  disabled={!bulkTitle.trim() || !bulkMessage.trim() || emailSending}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md flex items-center"
+                >
+                  {emailSending ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      {sendRealEmails ? 'Sending Emails...' : 'Creating Record...'}
+                    </>
+                  ) : (
+                    sendRealEmails ? '📧 Send Emails' : '📋 Create Record'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Communication History Modal */}
+      {showCommunicationHistory && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-10 mx-auto p-5 border w-11/12 md:w-4/5 lg:w-3/4 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Communication History
+                </h3>
+                <button
+                  onClick={() => setShowCommunicationHistory(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+              
+              {loadingCommunications ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                  <p className="mt-2 text-sm text-gray-500">Loading communications...</p>
+                </div>
+              ) : communications.length === 0 ? (
+                <div className="text-center py-8">
+                  <MessageSquare className="mx-auto h-12 w-12 text-gray-400" />
+                  <h3 className="mt-2 text-sm font-medium text-gray-900">No communications yet</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Your bulk communications will appear here.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4 max-h-96 overflow-y-auto">
+                  {communications.map((comm) => (
+                    <div key={comm.id} className="border rounded-lg p-4 bg-gray-50">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2">
+                            <h4 className="font-medium text-gray-900">{comm.title}</h4>
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                              comm.status === 'sent' ? 'bg-green-100 text-green-800' :
+                              comm.status === 'failed' ? 'bg-red-100 text-red-800' :
+                              'bg-yellow-100 text-yellow-800'
+                            }`}>
+                              {comm.status}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-600 mt-1">{comm.message}</p>
+                          <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
+                            <span>📅 {new Date(comm.created_at).toLocaleDateString()}</span>
+                            <span>👥 {comm.total_recipients} recipients</span>
+                            <span>✅ {comm.successful_deliveries} delivered</span>
+                            {comm.failed_deliveries > 0 && (
+                              <span className="text-red-600">❌ {comm.failed_deliveries} failed</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
