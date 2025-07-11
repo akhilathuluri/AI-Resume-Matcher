@@ -144,7 +144,7 @@ export function ChatbotPage() {
         const welcomeMessage: Message = {
           id: 'welcome-' + Date.now(),
           role: 'assistant',
-          content: 'Hello! I\'m your AI career assistant. I can help you with:\n\n• **Resume Matching**: Provide a job description and I\'ll find the most relevant resumes from your collection\n• **Career Guidance**: Answer questions about job searching, interviewing, and career development\n• **Clarifications**: Explain my previous analysis in more detail\n• **General Help**: Discuss workplace advice, salary expectations, and more\n\nWhat would you like to know?',
+          content: 'Hello! I\'m your AI recruiting assistant. I\'m here to help you with all aspects of hiring and talent management:\n\n• **Resume Analysis**: Upload job descriptions and I\'ll find the best candidates from your talent pool\n• **Hiring Guidance**: Best practices for interviewing, screening, and making job offers\n• **Market Intelligence**: Salary ranges, skill trends, and recruiting strategies\n• **General Questions**: Ask me anything about recruitment, HR processes, or candidate evaluation\n• **Follow-up Discussions**: I remember our conversation and can clarify or expand on previous responses\n\nWhat would you like to discuss today?',
         }
         setMessages([welcomeMessage])
         // Save welcome message to database
@@ -156,7 +156,7 @@ export function ChatbotPage() {
       const welcomeMessage: Message = {
         id: 'welcome-' + Date.now(),
         role: 'assistant',
-        content: 'Hello! I\'m your AI career assistant. I can help you with:\n\n• **Resume Matching**: Provide a job description and I\'ll find the most relevant resumes from your collection\n• **Career Guidance**: Answer questions about job searching, interviewing, and career development\n• **Clarifications**: Explain my previous analysis in more detail\n• **General Help**: Discuss workplace advice, salary expectations, and more\n\nWhat would you like to know?',
+        content: 'Hello! I\'m your AI recruiting assistant. I\'m here to help you with all aspects of hiring and talent management:\n\n• **Resume Analysis**: Upload job descriptions and I\'ll find the best candidates from your talent pool\n• **Hiring Guidance**: Best practices for interviewing, screening, and making job offers\n• **Market Intelligence**: Salary ranges, skill trends, and recruiting strategies\n• **General Questions**: Ask me anything about recruitment, HR processes, or candidate evaluation\n• **Follow-up Discussions**: I remember our conversation and can clarify or expand on previous responses\n\nWhat would you like to discuss today?',
       }
       setMessages([welcomeMessage])
     } finally {
@@ -207,7 +207,7 @@ export function ChatbotPage() {
       const welcomeMessage: Message = {
         id: 'welcome-' + Date.now(),
         role: 'assistant',
-        content: 'Hello! I\'m your AI career assistant. I can help you with:\n\n• **Resume Matching**: Provide a job description and I\'ll find the most relevant resumes from your collection\n• **Career Guidance**: Answer questions about job searching, interviewing, and career development\n• **Clarifications**: Explain my previous analysis in more detail\n• **General Help**: Discuss workplace advice, salary expectations, and more\n\nWhat would you like to know?',
+        content: 'Hello! I\'m your AI recruiting assistant. I\'m here to help you with all aspects of hiring and talent management:\n\n• **Resume Analysis**: Upload job descriptions and I\'ll find the best candidates from your talent pool\n• **Hiring Guidance**: Best practices for interviewing, screening, and making job offers\n• **Market Intelligence**: Salary ranges, skill trends, and recruiting strategies\n• **General Questions**: Ask me anything about recruitment, HR processes, or candidate evaluation\n• **Follow-up Discussions**: I remember our conversation and can clarify or expand on previous responses\n\nWhat would you like to discuss today?',
       }
       setMessages([welcomeMessage])
       await saveChatMessage(welcomeMessage)
@@ -331,9 +331,15 @@ export function ChatbotPage() {
 
   const generateChatResponse = async (jobDescription: string, matchingResumes: any[], conversationHistory: Message[]) => {
     try {
-      // Check if this looks like a resume matching request
-      const isResumeMatchingRequest = /\b(job|position|role|candidate|resume|hire|hiring|recruit|skill|experience|qualification|developer|engineer|manager|analyst|designer|consultant)\b/i.test(jobDescription.toLowerCase()) && 
-                                    (jobDescription.length > 20 || /\b(looking for|need|require|seeking|want)\b/i.test(jobDescription.toLowerCase()))
+      // Check if this is a greeting or simple question first
+      const isGreeting = /^(hi|hello|hey|good morning|good afternoon|good evening|greetings|sup|what's up|whats up)$/i.test(jobDescription.trim())
+      const isSimpleQuestion = jobDescription.trim().length < 15 && !/\b(job|position|role|hiring|recruit)\b/i.test(jobDescription.toLowerCase())
+      
+      // Check if this looks like a resume matching request (more strict criteria)
+      const hasJobKeywords = /\b(job description|position|role|candidate|hire|hiring|recruit|looking for|seeking|need|require|want)\b/i.test(jobDescription.toLowerCase())
+      const hasJobContext = /\b(years of experience|skills|requirements|qualifications|responsibilities|developer|engineer|manager|analyst|designer|consultant|senior|junior)\b/i.test(jobDescription.toLowerCase())
+      const isResumeMatchingRequest = !isGreeting && !isSimpleQuestion && 
+                                    (hasJobKeywords || (hasJobContext && jobDescription.length > 30))
 
       // If it's a resume matching request and we have resumes
       if (isResumeMatchingRequest && matchingResumes.length > 0) {
@@ -426,14 +432,18 @@ For each resume, I need you to:
       }
       // Handle general conversation, questions about previous responses, or non-resume topics
       else {
+        console.log('Processing follow-up/general question:', jobDescription)
+        console.log('Conversation history length:', conversationHistory.length)
+        
         // Prepare conversation history for context, including resume data from previous analyses
-        const recentMessages = conversationHistory.slice(-8).map(msg => {
+        const recentMessages = conversationHistory.slice(-6).map(msg => {
           let content = msg.content
           
           // If this message has resume matches, include them in the context with more detail
           if (msg.resumes && msg.resumes.length > 0) {
             const resumeContext = msg.resumes.map(resume => {
-              const contentPreview = resume.content ? resume.content.substring(0, 800) + '...' : 'Content not available'
+              // Limit content to avoid token limits
+              const contentPreview = resume.content ? resume.content.substring(0, 500) + '...' : 'Content not available'
               return `${resume.filename} (${Math.round(resume.similarity * 100)}% match) - Resume content: ${contentPreview}`
             }).join('\n\n')
             
@@ -445,6 +455,8 @@ For each resume, I need you to:
             content: content
           }
         })
+
+        console.log('Recent messages for context:', recentMessages.length)
 
         const response = await fetch('https://models.inference.ai.azure.com/chat/completions', {
           method: 'POST',
@@ -490,13 +502,15 @@ If the user asks about resume matching specifically, tell them to provide a job 
                 content: jobDescription
               }
             ],
-            max_tokens: 1000,
-            temperature: 0.3,
+            max_tokens: 800,
+            temperature: 0.5,
           }),
         })
 
         if (!response.ok) {
-          throw new Error('Failed to generate chat response')
+          const errorText = await response.text()
+          console.error('API Error:', response.status, response.statusText, errorText)
+          throw new Error(`API request failed: ${response.status} ${response.statusText}`)
         }
 
         const data = await response.json()
@@ -504,7 +518,17 @@ If the user asks about resume matching specifically, tell them to provide a job 
       }
     } catch (error) {
       console.error('Error generating chat response:', error)
-      return 'Sorry, I encountered an error while processing your request. Please try again.'
+      
+      // Provide more specific error messages
+      if (error instanceof Error) {
+        if (error.message.includes('API request failed')) {
+          return 'I\'m having trouble connecting to the AI service. Please check your internet connection and try again.'
+        } else if (error.message.includes('token')) {
+          return 'Your question was too complex for me to process. Please try asking a simpler or shorter question.'
+        }
+      }
+      
+      return 'Sorry, I encountered an error while processing your request. Please try again with a shorter question.'
     }
   }
 
@@ -526,17 +550,29 @@ If the user asks about resume matching specifically, tell them to provide a job 
     await saveChatMessage(userMessage)
 
     try {
-      // Find similar resumes only if it looks like a job description
-      const matchingResumes = await findSimilarResumes(input)
+      // Only find similar resumes if it looks like a job description (not for greetings or simple questions)
+      const isGreeting = /^(hi|hello|hey|good morning|good afternoon|good evening|greetings|sup|what's up|whats up)$/i.test(input.trim())
+      const isSimpleQuestion = input.trim().length < 15 && !/\b(job|position|role|hiring|recruit)\b/i.test(input.toLowerCase())
+      const shouldSearchResumes = !isGreeting && !isSimpleQuestion
+      
+      const matchingResumes = shouldSearchResumes ? await findSimilarResumes(input) : []
       
       // Generate AI response with conversation context
       const aiResponse = await generateChatResponse(input, matchingResumes, messages)
+
+      // Only attach resumes if this was actually a resume matching request
+      const isGreetingCheck = /^(hi|hello|hey|good morning|good afternoon|good evening|greetings|sup|what's up|whats up)$/i.test(input.trim())
+      const isSimpleQuestionCheck = input.trim().length < 15 && !/\b(job|position|role|hiring|recruit)\b/i.test(input.toLowerCase())
+      const hasJobKeywordsCheck = /\b(job description|position|role|candidate|hire|hiring|recruit|looking for|seeking|need|require|want)\b/i.test(input.toLowerCase())
+      const hasJobContextCheck = /\b(years of experience|skills|requirements|qualifications|responsibilities|developer|engineer|manager|analyst|designer|consultant|senior|junior)\b/i.test(input.toLowerCase())
+      const wasResumeMatchingRequest = !isGreetingCheck && !isSimpleQuestionCheck && 
+                                     (hasJobKeywordsCheck || (hasJobContextCheck && input.length > 30))
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: aiResponse,
-        resumes: matchingResumes,
+        resumes: wasResumeMatchingRequest && matchingResumes.length > 0 ? matchingResumes : undefined,
       }
 
       setMessages(prev => [...prev, assistantMessage])
@@ -609,9 +645,9 @@ If the user asks about resume matching specifically, tell them to provide a job 
     <div className="px-4 sm:px-6 lg:px-8 h-full">
       <div className="sm:flex sm:items-center">
         <div className="sm:flex-auto">
-          <h1 className="text-2xl font-bold text-gray-900">AI Career Assistant</h1>
+          <h1 className="text-2xl font-bold text-gray-900">AI Recruiting Assistant</h1>
           <p className="mt-2 text-sm text-gray-700">
-            Your AI-powered career helper. Ask questions, get resume matches, or seek career guidance.
+            Your intelligent recruiting companion. Ask questions, analyze candidates, get hiring insights, and make informed decisions.
           </p>
         </div>
         <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
