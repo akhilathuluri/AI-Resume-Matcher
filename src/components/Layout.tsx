@@ -1,5 +1,5 @@
-import React from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import React, { useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Files, MessageCircle, Settings, LogOut, Upload } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -10,10 +10,29 @@ interface LayoutProps {
 export function Layout({ children }: LayoutProps) {
   const { user, signOut } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
+  const [signingOut, setSigningOut] = useState(false)
+
+  const handleSignOut = async () => {
+    if (signingOut) return // Prevent multiple clicks
+    
+    setSigningOut(true)
+    try {
+      await signOut()
+      // Navigate to home page after successful sign out
+      navigate('/')
+    } catch (error) {
+      console.error('Sign out failed:', error)
+      // Show an error message or handle the error appropriately
+      alert('Failed to sign out. Please try again.')
+    } finally {
+      setSigningOut(false)
+    }
+  }
 
   const navigation = [
-    { name: 'Files', href: '/files', icon: Files },
-    { name: 'Chatbot', href: '/chatbot', icon: MessageCircle },
+    { name: 'Candidates', href: '/files', icon: Files },
+    { name: 'AI Recruiter', href: '/chatbot', icon: MessageCircle },
     { name: 'Settings', href: '/settings', icon: Settings },
   ]
 
@@ -52,12 +71,26 @@ export function Layout({ children }: LayoutProps) {
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-sm text-gray-700">{user?.email}</span>
+              {/* Debug info - remove in production */}
+              <span className="text-xs text-gray-400">
+                User: {user ? '✓' : '✗'}
+              </span>
               <button
-                onClick={signOut}
-                className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-500 hover:text-gray-700 transition-colors duration-200"
+                onClick={handleSignOut}
+                disabled={signingOut}
+                className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-500 hover:text-gray-700 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <LogOut className="h-4 w-4 mr-2" />
-                Sign out
+                {signingOut ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-500 mr-2"></div>
+                    Signing out...
+                  </>
+                ) : (
+                  <>
+                    <LogOut className="h-4 w-4 mr-2" />
+                    Sign out
+                  </>
+                )}
               </button>
             </div>
           </div>
