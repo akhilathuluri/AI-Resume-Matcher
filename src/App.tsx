@@ -1,8 +1,9 @@
 import React from 'react'
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { Layout } from './components/Layout'
 import { AuthForm } from './components/AuthForm'
+import { HomePage } from './pages/HomePage'
 import { FilesPage } from './pages/FilesPage'
 import { ChatbotPage } from './pages/ChatbotPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -32,6 +33,8 @@ function AppRoutes() {
   return (
     <Router>
       <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/auth" element={<AuthForm />} />
         <Route
           path="/files"
           element={
@@ -62,7 +65,6 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         />
-        <Route path="/" element={<Navigate to="/files" replace />} />
       </Routes>
     </Router>
   )
