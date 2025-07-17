@@ -28,6 +28,14 @@ export function FilesPage() {
   const [dragActive, setDragActive] = useState(false)
   const [notification, setNotification] = useState<{message: string, type: 'success' | 'error' | 'info'} | null>(null)
   
+  // Upload progress tracking
+  const [uploadProgress, setUploadProgress] = useState<{
+    total: number
+    completed: number
+    failed: number
+    current: string
+  }>({ total: 0, completed: 0, failed: 0, current: '' })
+  
   // New state for bulk operations
   const [selectedResumes, setSelectedResumes] = useState<string[]>([])
   const [showBulkCommunication, setShowBulkCommunication] = useState(false)
@@ -259,8 +267,17 @@ export function FilesPage() {
     }
   }
 
-  const generateEmbedding = async (text: string): Promise<number[]> => {
+  const generateEmbedding = async (text: string, retries: number = 3): Promise<number[]> => {
     try {
+      // Validate input text
+      if (!text || text.trim().length === 0) {
+        console.warn('Empty text provided for embedding generation')
+        return []
+      }
+
+      // Truncate text if too long (API limit is usually around 8192 tokens)
+      const truncatedText = text.substring(0, 8000)
+
       const response = await fetch('https://models.inference.ai.azure.com/embeddings', {
         method: 'POST',
         headers: {
@@ -269,16 +286,35 @@ export function FilesPage() {
         },
         body: JSON.stringify({
           model: 'text-embedding-3-small',
-          input: text,
+          input: truncatedText,
         }),
       })
 
+      if (response.status === 429) {
+        // Rate limited - wait and retry
+        if (retries > 0) {
+          const waitTime = Math.pow(2, 4 - retries) * 1000 // Exponential backoff: 2s, 4s, 8s
+          console.log(`Rate limited. Waiting ${waitTime}ms before retry...`)
+          await new Promise(resolve => setTimeout(resolve, waitTime))
+          return generateEmbedding(text, retries - 1)
+        } else {
+          throw new Error('Rate limit exceeded after retries')
+        }
+      }
+
       if (!response.ok) {
-        throw new Error('Failed to generate embedding')
+        throw new Error(`Failed to generate embedding: ${response.status} ${response.statusText}`)
       }
 
       const data = await response.json()
-      return data.data[0].embedding
+      const embedding = data.data?.[0]?.embedding
+
+      if (!embedding || !Array.isArray(embedding) || embedding.length === 0) {
+        console.warn('Invalid embedding received from API')
+        return []
+      }
+
+      return embedding
     } catch (error) {
       console.error('Error generating embedding:', error)
       return []
@@ -288,7 +324,10 @@ export function FilesPage() {
   const uploadFile = async (file: File) => {
     if (!user) return
 
+    // Set upload progress for single file
     setUploading(true)
+    setUploadProgress({ total: 1, completed: 0, failed: 0, current: file.name })
+
     try {
       // Check individual file size limit (100MB)
       const maxFileSize = 100 * 1024 * 1024 // 100MB in bytes
@@ -322,8 +361,20 @@ export function FilesPage() {
       // Extract text content first
       const content = await extractTextFromFile(file)
       
-      // Generate embedding
+      // Validate content before generating embedding
+      if (!content || content.trim().length === 0) {
+        throw new Error(`No text content could be extracted from ${file.name}`)
+      }
+
+      // Generate embedding with retry logic
+      showNotification(`Generating AI embedding for ${file.name}...`, 'info')
       const embedding = await generateEmbedding(content)
+
+      // Check if embedding is valid (non-empty)
+      if (!embedding || embedding.length === 0) {
+        console.warn(`Failed to generate embedding for ${file.name}, saving without embedding`)
+        // Continue without embedding rather than failing completely
+      }
 
       // Upload file to Supabase storage
       const fileExt = file.name.split('.').pop()
@@ -361,7 +412,7 @@ export function FilesPage() {
                   file_size: file.size,
                   file_type: 'text/plain', // Store as text type
                   content,
-                  embedding,
+                  embedding: embedding.length > 0 ? embedding : null, // Only set embedding if valid
                 },
               ])
 
@@ -398,11 +449,36 @@ export function FilesPage() {
             file_size: file.size,
             file_type: file.type,
             content,
-            embedding,
+            embedding: embedding.length > 0 ? embedding : null, // Only set embedding if valid
           },
         ])
 
-      if (dbError) throw dbError
+      if (dbError) {
+        // If it's a vector dimension error and we have an empty embedding, try without embedding
+        if (dbError.message?.includes('vector must have at least 1 dimension') && embedding.length === 0) {
+          console.warn(`Retrying ${file.name} without embedding due to dimension error`)
+          const { error: retryError } = await supabase
+            .from('resumes')
+            .insert([
+              {
+                user_id: user.id,
+                filename: file.name,
+                file_path: filePath,
+                file_size: file.size,
+                file_type: file.type,
+                content,
+                embedding: null, // Explicitly set to null
+              },
+            ])
+          
+          if (retryError) throw retryError
+          showNotification(`Successfully uploaded ${file.name} (without AI embedding)`, 'info')
+        } else {
+          throw dbError
+        }
+      } else {
+        showNotification(`Successfully uploaded ${file.name}`, 'success')
+      }
 
       // Update storage stats
       await updateStorageStats()
@@ -410,17 +486,78 @@ export function FilesPage() {
       // Refresh the list
       fetchResumes()
       
-      showNotification(`Successfully uploaded ${file.name}`, 'success')
     } catch (error) {
       console.error('Error uploading file:', error)
       
       if (error instanceof Error) {
-        showNotification(`Upload failed: ${error.message}`, 'error')
+        showNotification(`Upload failed for ${file.name}: ${error.message}`, 'error')
       } else {
-        showNotification('Error uploading file. Please try again.', 'error')
+        showNotification(`Error uploading ${file.name}. Please try again.`, 'error')
       }
+      throw error // Re-throw to be handled by batch upload
     } finally {
+      // Reset upload state for single file
       setUploading(false)
+      setUploadProgress({ total: 0, completed: 0, failed: 0, current: '' })
+    }
+  }
+
+  // Batch upload function with rate limiting
+  const uploadFilesBatch = async (files: File[]) => {
+    if (!user || files.length === 0) return
+
+    setUploading(true)
+    setUploadProgress({ total: files.length, completed: 0, failed: 0, current: '' })
+
+    let successCount = 0
+    let failureCount = 0
+
+    showNotification(`Starting batch upload of ${files.length} files...`, 'info')
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      
+      try {
+        setUploadProgress(prev => ({ 
+          ...prev, 
+          current: file.name,
+          completed: i,
+        }))
+
+        await uploadFile(file)
+        successCount++
+        
+        // Add delay between uploads to prevent rate limiting
+        // Longer delay for more files to be more conservative
+        const delay = files.length > 20 ? 2000 : files.length > 10 ? 1500 : 1000
+        if (i < files.length - 1) { // Don't delay after the last file
+          await new Promise(resolve => setTimeout(resolve, delay))
+        }
+        
+      } catch (error) {
+        failureCount++
+        console.error(`Failed to upload ${file.name}:`, error)
+        
+        setUploadProgress(prev => ({ 
+          ...prev, 
+          failed: prev.failed + 1,
+        }))
+      }
+    }
+
+    setUploading(false)
+    setUploadProgress({ total: 0, completed: 0, failed: 0, current: '' })
+
+    // Show final result
+    if (failureCount === 0) {
+      showNotification(`✅ Successfully uploaded all ${successCount} files!`, 'success')
+    } else if (successCount > 0) {
+      showNotification(
+        `⚠️ Batch upload completed: ${successCount} successful, ${failureCount} failed. Check individual file errors above.`, 
+        'info'
+      )
+    } else {
+      showNotification(`❌ All ${failureCount} files failed to upload. Please check the errors and try again.`, 'error')
     }
   }
 
@@ -549,44 +686,71 @@ export function FilesPage() {
     setDragActive(false)
 
     const files = Array.from(e.dataTransfer.files)
-    files.forEach(file => {
+    const validFiles = files.filter(file => {
       const allowedTypes = [
         'application/pdf',
         'text/plain',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
       ]
       
-      if (allowedTypes.includes(file.type)) {
-        if (file.size <= 100 * 1024 * 1024) { // 100MB limit
-          uploadFile(file)
-        } else {
-          alert('File size exceeds 100MB limit')
-        }
-      } else {
-        alert('Only PDF, DOCX, and TXT files are allowed')
+      if (!allowedTypes.includes(file.type)) {
+        showNotification(`Skipped ${file.name}: Only PDF, DOCX, and TXT files are allowed`, 'error')
+        return false
       }
+      
+      if (file.size > 100 * 1024 * 1024) { // 100MB limit
+        showNotification(`Skipped ${file.name}: File size exceeds 100MB limit`, 'error')
+        return false
+      }
+      
+      return true
     })
+
+    if (validFiles.length === 0) return
+
+    if (validFiles.length === 1) {
+      // Single file upload
+      uploadFile(validFiles[0])
+    } else {
+      // Multiple files - use batch upload
+      uploadFilesBatch(validFiles)
+    }
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
-    files.forEach(file => {
+    const validFiles = files.filter(file => {
       const allowedTypes = [
         'application/pdf',
         'text/plain',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
       ]
       
-      if (allowedTypes.includes(file.type)) {
-        if (file.size <= 100 * 1024 * 1024) { // 100MB limit
-          uploadFile(file)
-        } else {
-          alert('File size exceeds 100MB limit')
-        }
-      } else {
-        alert('Only PDF, DOCX, and TXT files are allowed')
+      if (!allowedTypes.includes(file.type)) {
+        showNotification(`Skipped ${file.name}: Only PDF, DOCX, and TXT files are allowed`, 'error')
+        return false
       }
+      
+      if (file.size > 100 * 1024 * 1024) { // 100MB limit
+        showNotification(`Skipped ${file.name}: File size exceeds 100MB limit`, 'error')
+        return false
+      }
+      
+      return true
     })
+
+    // Reset the input value so the same files can be selected again
+    e.target.value = ''
+
+    if (validFiles.length === 0) return
+
+    if (validFiles.length === 1) {
+      // Single file upload
+      uploadFile(validFiles[0])
+    } else {
+      // Multiple files - use batch upload
+      uploadFilesBatch(validFiles)
+    }
   }
 
   const formatFileSize = (bytes: number) => {
@@ -1091,8 +1255,42 @@ export function FilesPage() {
             </div>
           </div>
           {uploading && (
-            <div className="absolute inset-0 bg-white bg-opacity-50 flex items-center justify-center">
-              <div className="text-sm text-gray-600">Uploading...</div>
+            <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center">
+              <div className="bg-white rounded-lg shadow-lg p-6 max-w-md">
+                {uploadProgress.total > 1 ? (
+                  // Batch upload progress
+                  <div className="text-center">
+                    <div className="text-lg font-medium text-gray-900 mb-2">
+                      Uploading Files ({uploadProgress.completed + 1} of {uploadProgress.total})
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
+                      <div 
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                        style={{ width: `${((uploadProgress.completed) / uploadProgress.total) * 100}%` }}
+                      ></div>
+                    </div>
+                    <div className="text-sm text-gray-600 mb-1">
+                      Currently processing: {uploadProgress.current}
+                    </div>
+                    {uploadProgress.failed > 0 && (
+                      <div className="text-sm text-red-600">
+                        {uploadProgress.failed} failed
+                      </div>
+                    )}
+                    <div className="text-xs text-gray-500 mt-2">
+                      Adding delays between uploads to prevent rate limiting...
+                    </div>
+                  </div>
+                ) : (
+                  // Single file upload
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                    <div className="text-sm text-gray-600">
+                      {uploadProgress.current || 'Uploading...'}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
