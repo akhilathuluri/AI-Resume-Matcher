@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react'
-import { Upload, File, Trash2, Eye, Search, RefreshCw, Mail, MessageSquare, FileDown, Users } from 'lucide-react'
+import { Upload, File, Trash2, Eye, Search, RefreshCw, Mail, MessageSquare, FileDown, Users, Zap } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { sendBulkEmail, extractEmailFromContent, validateEmail, type EmailResult } from '../lib/emailServiceBrowser'
@@ -17,6 +17,7 @@ interface Resume {
   created_at: string
   file_path: string
   content?: string
+  embedding?: number[] | null
 }
 
 export function FilesPage() {
@@ -60,7 +61,7 @@ export function FilesPage() {
     try {
       const { data, error } = await supabase
         .from('resumes')
-        .select('*, content')
+        .select('*, content, embedding')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
@@ -558,6 +559,53 @@ export function FilesPage() {
       )
     } else {
       showNotification(`❌ All ${failureCount} files failed to upload. Please check the errors and try again.`, 'error')
+    }
+  }
+
+  // Regenerate embedding for a specific resume
+  const regenerateEmbedding = async (resumeId: string, filename: string) => {
+    if (!user) return
+
+    try {
+      showNotification(`Generating AI embedding for ${filename}...`, 'info')
+
+      // Get the resume content
+      const { data: resume, error: fetchError } = await supabase
+        .from('resumes')
+        .select('content')
+        .eq('id', resumeId)
+        .single()
+
+      if (fetchError) throw fetchError
+      if (!resume?.content) {
+        showNotification(`No content found for ${filename}`, 'error')
+        return
+      }
+
+      // Generate embedding
+      const embedding = await generateEmbedding(resume.content)
+
+      if (!embedding || embedding.length === 0) {
+        showNotification(`Failed to generate embedding for ${filename}`, 'error')
+        return
+      }
+
+      // Update the resume with the new embedding
+      const { error: updateError } = await supabase
+        .from('resumes')
+        .update({ embedding })
+        .eq('id', resumeId)
+
+      if (updateError) throw updateError
+
+      showNotification(`✅ Successfully generated embedding for ${filename}`, 'success')
+      
+      // Refresh the resumes list to show updated status
+      fetchResumes()
+
+    } catch (error) {
+      console.error('Error regenerating embedding:', error)
+      showNotification(`Failed to regenerate embedding for ${filename}: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error')
     }
   }
 
@@ -1361,12 +1409,14 @@ export function FilesPage() {
             {filteredResumes.map((resume) => (
               <div
                 key={resume.id}
-                className={`relative bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow duration-200 ${
-                  selectedResumes.includes(resume.id) ? 'ring-2 ring-blue-500 bg-blue-50' : ''
-                }`}
+                className="relative bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow duration-200 border border-gray-200"
               >
+                {selectedResumes.includes(resume.id) && (
+                  <div className="absolute inset-0 bg-blue-50 rounded-lg border-2 border-blue-500"></div>
+                )}
+                
                 {/* Selection checkbox */}
-                <div className="absolute top-4 left-4">
+                <div className="absolute top-4 left-4 z-10">
                   <input
                     type="checkbox"
                     checked={selectedResumes.includes(resume.id)}
@@ -1375,37 +1425,65 @@ export function FilesPage() {
                   />
                 </div>
                 
-                <div className="flex items-center justify-between ml-8">
-                  <div className="flex items-center">
-                    <File className={`h-8 w-8 ${resume.file_path ? 'text-blue-500' : 'text-orange-500'}`} />
-                    <div className="ml-3">
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        {resume.filename}
-                        {!resume.file_path && (
-                          <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
-                            Text Only
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {formatFileSize(resume.file_size)} • {new Date(resume.created_at).toLocaleDateString()}
-                      </p>
+                <div className="relative z-10 ml-8">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center flex-1 min-w-0">
+                      <File className={`h-8 w-8 flex-shrink-0 ${resume.file_path ? 'text-blue-500' : 'text-orange-500'}`} />
+                      <div className="ml-3 flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {resume.filename}
+                          {!resume.file_path && (
+                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
+                              Text Only
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {formatFileSize(resume.file_size)} • {new Date(resume.created_at).toLocaleDateString()}
+                        </p>
+                        {/* AI Embedding Status */}
+                        <div className="mt-1">
+                          {resume.embedding && resume.embedding.length > 0 ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                              <span className="w-1.5 h-1.5 bg-green-400 rounded-full mr-1"></span>
+                              AI Ready
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full mr-1"></span>
+                              No AI Embedding
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => viewResume(resume.file_path, resume.content, resume.filename)}
-                      className="text-blue-600 hover:text-blue-800 transition-colors duration-200"
-                      title={resume.file_path ? 'View file' : 'View text content'}
-                    >
-                      <Eye className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => deleteResume(resume.id, resume.file_path)}
-                      className="text-red-600 hover:text-red-800 transition-colors duration-200"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    
+                    <div className="flex space-x-2 ml-4">
+                      {/* Regenerate embedding button - only show if no embedding */}
+                      {(!resume.embedding || resume.embedding.length === 0) && (
+                        <button
+                          onClick={() => regenerateEmbedding(resume.id, resume.filename)}
+                          className="text-purple-600 hover:text-purple-800 transition-colors duration-200 p-1 hover:bg-purple-50 rounded"
+                          title="Generate AI embedding"
+                        >
+                          <Zap className="h-4 w-4" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => viewResume(resume.file_path, resume.content, resume.filename)}
+                        className="text-blue-600 hover:text-blue-800 transition-colors duration-200 p-1 hover:bg-blue-50 rounded"
+                        title={resume.file_path ? 'View file' : 'View text content'}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => deleteResume(resume.id, resume.file_path)}
+                        className="text-red-600 hover:text-red-800 transition-colors duration-200 p-1 hover:bg-red-50 rounded"
+                        title="Delete resume"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
