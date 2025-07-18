@@ -21,26 +21,26 @@ interface Message {
 // Custom markdown component for AI responses
 const FormattedMessage: React.FC<{ content: string; role: 'user' | 'assistant' }> = ({ content, role }) => {
   if (role === 'user') {
-    return <p className="text-sm text-white leading-relaxed">{content}</p>
+    return <p className="text-sm text-white leading-relaxed font-medium">{content}</p>
   }
 
   return (
-    <div className="text-sm prose prose-sm max-w-none prose-gray">
+    <div className="text-sm prose prose-sm max-w-none prose-slate">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          // Custom styling for different markdown elements
-          p: ({ children }) => <p className="mb-3 last:mb-0 text-gray-900 leading-relaxed">{children}</p>,
+          // Custom styling for different markdown elements with improved contrast
+          p: ({ children }) => <p className="mb-3 last:mb-0 text-slate-800 leading-relaxed font-medium">{children}</p>,
           ul: ({ children }) => <ul className="list-disc pl-5 mb-3 space-y-1">{children}</ul>,
           ol: ({ children }) => <ol className="list-decimal pl-5 mb-3 space-y-1">{children}</ol>,
-          li: ({ children }) => <li className="text-sm text-gray-900 leading-relaxed">{children}</li>,
-          strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
-          em: ({ children }) => <em className="italic text-gray-800">{children}</em>,
-          h1: ({ children }) => <h1 className="text-lg font-bold mb-3 mt-2 text-gray-900 first:mt-0">{children}</h1>,
-          h2: ({ children }) => <h2 className="text-base font-semibold mb-2 mt-3 text-gray-900 first:mt-0">{children}</h2>,
-          h3: ({ children }) => <h3 className="text-sm font-medium mb-2 mt-2 text-gray-900 first:mt-0">{children}</h3>,
+          li: ({ children }) => <li className="text-sm text-slate-700 leading-relaxed">{children}</li>,
+          strong: ({ children }) => <strong className="font-bold text-slate-900">{children}</strong>,
+          em: ({ children }) => <em className="italic text-slate-700">{children}</em>,
+          h1: ({ children }) => <h1 className="text-lg font-bold mb-3 mt-2 text-slate-900 first:mt-0">{children}</h1>,
+          h2: ({ children }) => <h2 className="text-base font-bold mb-2 mt-3 text-slate-900 first:mt-0">{children}</h2>,
+          h3: ({ children }) => <h3 className="text-sm font-semibold mb-2 mt-2 text-slate-900 first:mt-0">{children}</h3>,
           blockquote: ({ children }) => (
-            <blockquote className="border-l-4 border-blue-400 pl-4 italic text-gray-700 my-3 bg-blue-50 py-2 rounded-r">
+            <blockquote className="border-l-4 border-blue-400 pl-4 italic text-slate-700 my-3 bg-blue-50/80 py-3 rounded-r-lg">
               {children}
             </blockquote>
           ),
@@ -48,52 +48,52 @@ const FormattedMessage: React.FC<{ content: string; role: 'user' | 'assistant' }
             const isInline = !className
             if (isInline) {
               return (
-                <code className="bg-gray-200 text-gray-800 px-1.5 py-0.5 rounded text-xs font-mono">
+                <code className="bg-slate-200/80 text-slate-800 px-2 py-1 rounded-md text-xs font-mono font-semibold">
                   {children}
                 </code>
               )
             }
             return (
-              <pre className="bg-gray-200 p-3 rounded-md overflow-x-auto my-3">
-                <code className="text-xs font-mono text-gray-800">{children}</code>
+              <pre className="bg-slate-100/80 border border-slate-200/60 p-4 rounded-xl overflow-x-auto my-4">
+                <code className="text-xs font-mono text-slate-800">{children}</code>
               </pre>
             )
           },
-          hr: () => <hr className="border-gray-400 my-4" />,
+          hr: () => <hr className="border-slate-300 my-4" />,
           a: ({ children, href }) => (
             <a
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-600 hover:text-blue-800 underline font-medium"
+              className="text-blue-600 hover:text-blue-700 underline font-semibold transition-colors duration-200"
             >
               {children}
             </a>
           ),
-          // Handle tables if they appear in responses
+          // Handle tables with improved styling
           table: ({ children }) => (
-            <div className="overflow-x-auto my-3">
-              <table className="min-w-full border border-gray-300 text-xs">
+            <div className="overflow-x-auto my-4 rounded-lg border border-slate-200/60">
+              <table className="min-w-full text-xs">
                 {children}
               </table>
             </div>
           ),
           thead: ({ children }) => (
-            <thead className="bg-gray-100">{children}</thead>
+            <thead className="bg-slate-100/80">{children}</thead>
           ),
           tbody: ({ children }) => (
-            <tbody>{children}</tbody>
+            <tbody className="bg-white/80">{children}</tbody>
           ),
           tr: ({ children }) => (
-            <tr className="border-b border-gray-200">{children}</tr>
+            <tr className="border-b border-slate-200/60 hover:bg-slate-50/50 transition-colors duration-200">{children}</tr>
           ),
           th: ({ children }) => (
-            <th className="px-3 py-2 text-left font-medium text-gray-900 border-r border-gray-300 last:border-r-0">
+            <th className="px-4 py-3 text-left font-semibold text-slate-900 border-r border-slate-200/60 last:border-r-0">
               {children}
             </th>
           ),
           td: ({ children }) => (
-            <td className="px-3 py-2 text-gray-900 border-r border-gray-300 last:border-r-0">
+            <td className="px-4 py-3 text-slate-800 border-r border-slate-200/60 last:border-r-0">
               {children}
             </td>
           ),
@@ -642,159 +642,205 @@ If the user asks about resume matching specifically, tell them to provide a job 
   }
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 h-full">
-      <div className="sm:flex sm:items-center">
-        <div className="sm:flex-auto">
-          <h1 className="text-2xl font-bold text-gray-900">AI Recruiting Assistant</h1>
-          <p className="mt-2 text-sm text-gray-700">
-            Your intelligent recruiting companion. Ask questions, analyze candidates, get hiring insights, and make informed decisions.
-          </p>
-        </div>
-        <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
-          <button
-            type="button"
-            onClick={clearChatHistory}
-            disabled={loading || loadingHistory}
-            className="inline-flex items-center px-3 py-2 border border-red-300 shadow-sm text-sm leading-4 font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Clear all chat history"
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Clear History
-          </button>
+    <div className="min-h-[calc(100vh-5rem)] flex flex-col bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20">
+      {/* Header */}
+      <div className="relative overflow-hidden bg-white/80 backdrop-blur-sm border-b border-slate-200/60 mb-4 sm:mb-6">
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-600/5 to-indigo-600/5"></div>
+        <div className="relative px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
+            <div className="flex items-center space-x-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg">
+                <Bot className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                  AI Recruiting Assistant
+                </h1>
+                <p className="text-sm text-slate-600 leading-relaxed mt-1 hidden sm:block">
+                  Your intelligent recruiting companion for candidate analysis and hiring insights
+                </p>
+              </div>
+            </div>
+            
+            <button
+              type="button"
+              onClick={clearChatHistory}
+              disabled={loading || loadingHistory}
+              className="group inline-flex items-center px-4 py-2.5 text-sm font-medium text-red-600 bg-red-50/80 hover:bg-red-100/80 border border-red-200/60 hover:border-red-300/80 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Clear all chat history"
+            >
+              <Trash2 className="h-4 w-4 mr-2 group-hover:scale-110 transition-transform duration-200" />
+              <span className="hidden sm:inline">Clear History</span>
+              <span className="sm:hidden">Clear</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="mt-8 bg-white rounded-lg shadow-sm border h-[calc(100vh-240px)] flex flex-col">
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {loadingHistory ? (
-            <div className="flex justify-center items-center h-full">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                <p className="mt-2 text-sm text-gray-500">Loading chat history...</p>
-              </div>
-            </div>
-          ) : (
-            <>
-              {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div
-                className={`flex max-w-3xl ${
-                  message.role === 'user' ? 'flex-row-reverse' : 'flex-row'
-                }`}
-              >
-                <div
-                  className={`flex-shrink-0 ${
-                    message.role === 'user' ? 'ml-3' : 'mr-3'
-                  }`}
-                >
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                      message.role === 'user'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-200 text-gray-600'
-                    }`}
-                  >
-                    {message.role === 'user' ? (
-                      <User className="w-4 h-4" />
-                    ) : (
-                      <Bot className="w-4 h-4" />
-                    )}
+      {/* Chat Container */}
+      <div className="flex-1 flex flex-col px-4 sm:px-6 lg:px-8 pb-4 sm:pb-6">
+        <div className="flex-1 bg-white/70 backdrop-blur-sm rounded-2xl sm:rounded-3xl border border-slate-200/60 shadow-xl shadow-blue-500/5 flex flex-col overflow-hidden">
+          
+          {/* Messages Area */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+              {loadingHistory ? (
+                <div className="flex justify-center items-center h-64">
+                  <div className="text-center">
+                    <div className="w-12 h-12 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                    <p className="text-sm text-slate-600 font-medium">Loading conversation...</p>
                   </div>
                 </div>
-                <div
-                  className={`rounded-lg px-4 py-3 ${
-                    message.role === 'user'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-900'
-                  }`}
-                >
-                  <FormattedMessage content={message.content} role={message.role} />
-                  
-                  {/* Resume matches */}
-                  {message.resumes && message.resumes.length > 0 && (
-                    <div className="mt-4 space-y-2">
-                      <p className="text-sm font-medium text-gray-700">
-                        Top {message.resumes.length} Matching Resumes:
-                      </p>
-                      <div className="space-y-2">
-                        {message.resumes.map((resume, index) => (
+              ) : (
+                <>
+                  {messages.map((message, index) => (
+                    <div
+                      key={message.id}
+                      className={`flex animate-fade-in-scale ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                      style={{ animationDelay: `${index * 0.1}s` }}
+                    >
+                      <div
+                        className={`flex max-w-full sm:max-w-4xl ${
+                          message.role === 'user' ? 'flex-row-reverse' : 'flex-row'
+                        }`}
+                      >
+                        {/* Avatar */}
+                        <div
+                          className={`flex-shrink-0 ${
+                            message.role === 'user' ? 'ml-3 sm:ml-4' : 'mr-3 sm:mr-4'
+                          }`}
+                        >
                           <div
-                            key={resume.id}
-                            className="flex items-center justify-between p-2 bg-white rounded border"
+                            className={`w-8 h-8 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center shadow-lg ${
+                              message.role === 'user'
+                                ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white'
+                                : 'bg-gradient-to-br from-slate-100 to-slate-200 text-slate-600'
+                            }`}
                           >
-                            <div className="flex items-center">
-                              <span className="text-xs font-medium text-gray-500 mr-2">
-                                #{index + 1}
-                              </span>
-                              <FileText className="w-4 h-4 text-blue-500 mr-2" />
-                              <span className="text-sm text-gray-900">
-                                {resume.filename}
-                              </span>
-                              <span className="text-xs text-gray-500 ml-2">
-                                ({Math.round(resume.similarity * 100)}% match)
-                              </span>
-                            </div>
-                            <button
-                              onClick={() => viewResume(resume.file_path, resume.content, resume.filename)}
-                              className="text-blue-600 hover:text-blue-800 transition-colors duration-200"
-                            >
-                              <ExternalLink className="w-4 h-4" />
-                            </button>
+                            {message.role === 'user' ? (
+                              <User className="w-4 h-4 sm:w-5 sm:h-5" />
+                            ) : (
+                              <Bot className="w-4 h-4 sm:w-5 sm:h-5" />
+                            )}
                           </div>
-                        ))}
+                        </div>
+                        
+                        {/* Message Content */}
+                        <div
+                          className={`group rounded-2xl sm:rounded-3xl px-4 sm:px-6 py-3 sm:py-4 shadow-sm hover:shadow-md transition-all duration-300 ${
+                            message.role === 'user'
+                              ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white'
+                              : 'bg-gradient-to-br from-white to-slate-50/50 text-slate-900 border border-slate-200/60'
+                          }`}
+                        >
+                          <FormattedMessage content={message.content} role={message.role} />
+                          
+                          {/* Resume Matches */}
+                          {message.resumes && message.resumes.length > 0 && (
+                            <div className="mt-6 space-y-4">
+                              <div className="flex items-center space-x-2 pb-3 border-b border-slate-200/60">
+                                <FileText className="h-4 w-4 text-blue-500" />
+                                <p className="text-sm font-semibold text-slate-700">
+                                  Top {message.resumes.length} Matching Candidates
+                                </p>
+                              </div>
+                              <div className="grid gap-3">
+                                {message.resumes.map((resume, index) => (
+                                  <div
+                                    key={resume.id}
+                                    className="group/resume flex items-center justify-between p-3 sm:p-4 bg-white/80 hover:bg-white/90 rounded-xl border border-slate-200/60 hover:border-slate-300/80 shadow-sm hover:shadow-md transition-all duration-300"
+                                  >
+                                    <div className="flex items-center space-x-3 flex-1 min-w-0">
+                                      <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center text-white text-sm font-bold">
+                                        {index + 1}
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium text-slate-900 truncate">
+                                          {resume.filename}
+                                        </p>
+                                        <div className="flex items-center space-x-2 mt-1">
+                                          <div className="flex-1 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                            <div
+                                              className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full transition-all duration-1000"
+                                              style={{ width: `${Math.round(resume.similarity * 100)}%` }}
+                                            ></div>
+                                          </div>
+                                          <span className="text-xs font-semibold text-slate-600">
+                                            {Math.round(resume.similarity * 100)}%
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <button
+                                      onClick={() => viewResume(resume.file_path, resume.content, resume.filename)}
+                                      className="flex-shrink-0 p-2 text-blue-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200 group-hover/resume:scale-110"
+                                      title="View resume"
+                                    >
+                                      <ExternalLink className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {/* Loading Animation */}
+                  {loading && (
+                    <div className="flex justify-start animate-fade-in-scale">
+                      <div className="flex">
+                        <div className="mr-3 sm:mr-4">
+                          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 text-slate-600 flex items-center justify-center shadow-lg">
+                            <Bot className="w-4 h-4 sm:w-5 sm:h-5" />
+                          </div>
+                        </div>
+                        <div className="bg-gradient-to-br from-white to-slate-50/50 border border-slate-200/60 rounded-2xl sm:rounded-3xl px-4 sm:px-6 py-3 sm:py-4 shadow-sm">
+                          <div className="flex items-center space-x-2">
+                            <div className="flex space-x-1">
+                              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
+                              <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                              <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                            </div>
+                            <span className="text-sm text-slate-600 font-medium">AI is thinking...</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
-                </div>
-              </div>
+                </>
+              )}
+              <div ref={messagesEndRef} />
             </div>
-          ))}
-          {loading && (
-            <div className="flex justify-start">
-              <div className="flex">
-                <div className="mr-3">
-                  <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center">
-                    <Bot className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="bg-gray-100 rounded-lg px-4 py-2">
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-            </>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
+          </div>
 
-        {/* Input */}
-        <div className="border-t p-4">
-          <form onSubmit={handleSubmit} className="flex space-x-2">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask me anything about careers, or describe a job position for resume matching..."
-              className="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              disabled={loading}
-            />
-            <button
-              type="submit"
-              disabled={loading || !input.trim()}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          </form>
+          {/* Input Area */}
+          <div className="border-t border-slate-200/60 bg-white/50 backdrop-blur-sm">
+            <div className="p-4 sm:p-6">
+              <form onSubmit={handleSubmit} className="flex space-x-3 sm:space-x-4">
+                <div className="flex-1 relative">
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="Ask me anything about careers, or describe a job position for resume matching..."
+                    className="w-full bg-white/80 border border-slate-200/60 hover:border-slate-300/80 focus:border-blue-500/60 rounded-2xl px-4 sm:px-6 py-3 sm:py-4 text-sm focus:outline-none focus:ring-4 focus:ring-blue-500/20 transition-all duration-300 placeholder-slate-500 shadow-sm hover:shadow-md"
+                    disabled={loading}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-indigo-500/5 rounded-2xl opacity-0 hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading || !input.trim()}
+                  className="group flex-shrink-0 bg-gradient-to-br from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-2xl px-4 sm:px-6 py-3 sm:py-4 shadow-lg hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 disabled:hover:shadow-lg"
+                >
+                  <Send className="w-4 h-4 sm:w-5 sm:h-5 group-hover:scale-110 transition-transform duration-200" />
+                </button>
+              </form>
+            </div>
+          </div>
         </div>
       </div>
     </div>
