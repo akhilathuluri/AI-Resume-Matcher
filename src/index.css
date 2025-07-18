@@ -253,69 +253,142 @@ html {
   background-clip: text;
 }
 
-/* Responsive improvements */
+/* AuthForm Enhanced Animations and Utilities */
+@keyframes fade-in-scale {
+  0% {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(59, 130, 246, 0.5);
+  }
+}
+
+.animate-fade-in-scale {
+  animation: fade-in-scale 0.4s ease-out forwards;
+}
+
+/* Enhanced Form Focus States */
+.auth-input-focus {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.auth-input-focus:focus {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.1), 
+              0 10px 10px -5px rgba(59, 130, 246, 0.04),
+              0 0 0 4px rgba(59, 130, 246, 0.1);
+}
+
+/* Button Hover Effects */
+.auth-button-gradient {
+  background-size: 200% 200%;
+  animation: gradient-shift 3s ease infinite;
+}
+
+/* Glass Morphism Utilities */
+.auth-glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 25px 45px -12px rgba(0, 0, 0, 0.1),
+              0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+}
+
+/* Responsive Improvements */
 @media (max-width: 640px) {
-  .glass-effect {
-    backdrop-filter: blur(10px);
+  .auth-mobile-spacing {
+    padding: 1rem;
   }
   
-  .chat-message {
-    max-width: calc(100% - 3rem);
+  .auth-mobile-text {
+    font-size: 1.25rem;
+    line-height: 1.75rem;
   }
   
-  .chat-avatar {
-    width: 2rem;
-    height: 2rem;
-  }
-  
-  .chat-input {
-    font-size: 16px; /* Prevents zoom on iOS */
+  .auth-mobile-button {
+    padding: 1rem 1.5rem;
+    font-size: 1rem;
   }
 }
 
-/* Enhanced backdrop blur support */
-@supports (backdrop-filter: blur(20px)) {
-  .enhanced-blur {
-    backdrop-filter: blur(20px);
-  }
+/* Enhanced Loading States */
+.auth-loading-overlay {
+  position: relative;
+  overflow: hidden;
 }
 
+.auth-loading-overlay::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.4),
+    transparent
+  );
+  transition: left 0.5s;
+}
+
+.auth-loading-overlay.loading::before {
+  left: 100%;
+}
+
+/* Micro-interactions */
+.auth-hover-lift {
+  transition: transform 0.2s ease-out;
+}
+
+.auth-hover-lift:hover {
+  transform: translateY(-2px);
+}
+
+/* Enhanced Backdrop Blur Support */
 @supports not (backdrop-filter: blur(20px)) {
-  .enhanced-blur {
-    background-color: rgba(255, 255, 255, 0.9);
+  .auth-glass-card {
+    background: rgba(255, 255, 255, 0.95);
   }
 }
 
-/* Smooth scrolling for chat messages */
-.chat-scroll {
-  scroll-behavior: smooth;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+/* Dark Mode Support (Future Enhancement) */
+@media (prefers-color-scheme: dark) {
+  .auth-glass-card {
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
 }
 
-.chat-scroll::-webkit-scrollbar {
-  width: 6px;
+/* Accessibility Improvements */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in-scale,
+  .auth-button-gradient {
+    animation: none;
+  }
+  
+  .auth-input-focus:focus {
+    transform: none;
+  }
 }
 
-.chat-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.chat-scroll::-webkit-scrollbar-thumb {
-  background-color: rgba(148, 163, 184, 0.3);
-  border-radius: 3px;
-}
-
-.chat-scroll::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(148, 163, 184, 0.5);
-}
-
-/* Enhanced button press effects */
-.btn-press {
-  transform: scale(1);
-  transition: transform 0.1s ease-in-out;
-}
-
-.btn-press:active {
-  transform: scale(0.98);
+/* High-contrast mode support */
+@media (prefers-contrast: high) {
+  .auth-glass-card {
+    background: rgba(255, 255, 255, 0.98);
+    border: 2px solid rgba(0, 0, 0, 0.2);
+  }
 }
