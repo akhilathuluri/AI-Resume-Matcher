@@ -1179,516 +1179,894 @@ export function FilesPage() {
   )
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8">
-      {/* Notification */}
-      {notification && (
-        <div className={`fixed top-4 right-4 z-50 p-4 rounded-md shadow-lg ${
-          notification.type === 'success' ? 'bg-green-100 text-green-800 border border-green-200' :
-          notification.type === 'error' ? 'bg-red-100 text-red-800 border border-red-200' :
-          'bg-blue-100 text-blue-800 border border-blue-200'
-        }`}>
-          {notification.message}
-        </div>
-      )}
-
-      <div className="sm:flex sm:items-center">
-        <div className="sm:flex-auto">
-          <h1 className="text-2xl font-bold text-gray-900">Resume Files</h1>
-          <p className="mt-2 text-sm text-gray-700">
-            Upload and manage your resume files. Supports PDF, DOCX, and TXT formats up to 100MB per file.
-          </p>
-          {/* <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-            <p className="text-xs text-yellow-800">
-              <strong>Note:</strong> If DOCX uploads fail, you may need to configure your Supabase storage bucket to accept DOCX files. 
-              See the README for setup instructions.
-            </p>
-          </div> */}
-        </div>
-        <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
-          <div className="flex space-x-2">
-            {selectedResumes.length > 0 && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleMassExport}
-                  className="inline-flex items-center px-3 py-2 border border-green-300 shadow-sm text-sm leading-4 font-medium rounded-md text-green-700 bg-green-50 hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                  title={`Export ${selectedResumes.length} selected resumes`}
-                >
-                  <FileDown className="h-4 w-4 mr-2" />
-                  Export ({selectedResumes.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowBulkCommunication(true)}
-                  className="inline-flex items-center px-3 py-2 border border-blue-300 shadow-sm text-sm leading-4 font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                  title={`Send update to ${selectedResumes.length} candidates`}
-                >
-                  <Mail className="h-4 w-4 mr-2" />
-                  Bulk Update ({selectedResumes.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={clearSelection}
-                  className="inline-flex items-center px-2 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                  title="Clear selection"
-                >
-                  ✕
-                </button>
-              </>
-            )}
-            <button
-              type="button"
-              onClick={() => setShowCommunicationHistory(true)}
-              className="inline-flex items-center px-3 py-2 border border-purple-300 shadow-sm text-sm leading-4 font-medium rounded-md text-purple-700 bg-purple-50 hover:bg-purple-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-              title="View communication history"
-            >
-              <MessageSquare className="h-4 w-4 mr-2" />
-              History
-            </button>
-            <button
-              type="button"
-              onClick={cleanupOrphanedRecords}
-              disabled={loading}
-              className="inline-flex items-center px-3 py-2 border border-yellow-300 shadow-sm text-sm leading-4 font-medium rounded-md text-yellow-700 bg-yellow-50 hover:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Clean up database records for files that no longer exist"
-            >
-              🧹 Cleanup
-            </button>
-            <button
-              type="button"
-              onClick={handleRefresh}
-              disabled={loading}
-              className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
-          </div>
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/20 to-indigo-50/10">
+      {/* Background Decorative Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 right-1/4 w-64 h-64 bg-gradient-to-br from-blue-400/8 to-indigo-400/8 rounded-full blur-3xl"></div>
+        <div className="absolute bottom-1/4 left-1/4 w-96 h-96 bg-gradient-to-br from-purple-400/5 to-pink-400/5 rounded-full blur-3xl"></div>
       </div>
 
-      {/* Upload Area */}
-      <div className="mt-8">
-        <div
-          className={`relative border-2 border-dashed rounded-lg p-6 transition-colors duration-200 ${
-            dragActive
-              ? 'border-blue-400 bg-blue-50'
-              : 'border-gray-300 hover:border-gray-400'
-          }`}
-          onDragEnter={handleDrag}
-          onDragLeave={handleDrag}
-          onDragOver={handleDrag}
-          onDrop={handleDrop}
-        >
-          <div className="text-center">
-            <Upload className="mx-auto h-12 w-12 text-gray-400" />
-            <div className="mt-4">
-              <label htmlFor="file-upload" className="cursor-pointer">
-                <span className="mt-2 block text-sm font-medium text-gray-900">
-                  Drop files here or click to upload
-                </span>
-                <input
-                  id="file-upload"
-                  name="file-upload"
-                  type="file"
-                  className="sr-only"
-                  multiple
-                  accept=".pdf,.txt,.docx"
-                  onChange={handleFileSelect}
-                />
-              </label>
-              <p className="mt-2 text-xs text-gray-500">
-                PDF, DOCX, TXT up to 100MB each
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        {/* Enhanced Notification */}
+        {notification && (
+          <div className={`fixed top-4 right-4 z-50 animate-fade-in-scale ${
+            notification.type === 'success' ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200/60' :
+            notification.type === 'error' ? 'bg-gradient-to-r from-red-50 to-rose-50 border-red-200/60' :
+            'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200/60'
+          } border backdrop-blur-md rounded-2xl p-4 shadow-2xl shadow-blue-500/10 max-w-sm`}>
+            <div className="flex items-center space-x-3">
+              <div className={`flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center ${
+                notification.type === 'success' ? 'bg-green-500' :
+                notification.type === 'error' ? 'bg-red-500' :
+                'bg-blue-500'
+              }`}>
+                {notification.type === 'success' ? (
+                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                ) : notification.type === 'error' ? (
+                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </div>
+              <p className={`text-sm font-medium ${
+                notification.type === 'success' ? 'text-green-700' :
+                notification.type === 'error' ? 'text-red-700' :
+                'text-blue-700'
+              }`}>
+                {notification.message}
               </p>
             </div>
           </div>
-          {uploading && (
-            <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center">
-              <div className="bg-white rounded-lg shadow-lg p-6 max-w-md">
+        )}
+
+        {/* Enhanced Header */}
+        <div className="relative overflow-hidden bg-white/80 backdrop-blur-md border border-slate-200/60 rounded-3xl shadow-2xl shadow-blue-500/10 mb-8">
+          <div className="absolute inset-0 bg-gradient-to-br from-white/90 to-slate-50/30"></div>
+          
+          <div className="relative p-6 sm:p-8">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-6 lg:space-y-0">
+              <div className="flex-1">
+                <div className="flex items-center space-x-4 mb-6">
+                  <div className="relative">
+                    <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl blur-lg opacity-20 animate-pulse"></div>
+                    <div className="relative w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-xl">
+                      <Users className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
+                    </div>
+                  </div>
+                  <div>
+                    <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                      Resume Portfolio
+                    </h1>
+                    <p className="text-sm sm:text-base text-slate-600 font-medium">
+                      Manage your candidate database with AI-powered insights
+                    </p>
+                  </div>
+                </div>
+
+                {/* Enhanced Search */}
+                <div className="relative max-w-md">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Search className="h-5 w-5 text-slate-400" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search resumes by name or content..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 bg-white/80 border border-slate-200/60 hover:border-slate-300/80 focus:border-blue-500/60 rounded-2xl shadow-sm hover:shadow-md focus:shadow-lg focus:outline-none focus:ring-4 focus:ring-blue-500/20 transition-all duration-300 placeholder-slate-500 text-slate-900 font-medium"
+                  />
+                </div>
+              </div>
+
+              {/* Enhanced Action Buttons */}
+              <div className="flex flex-wrap gap-3">
+                {selectedResumes.length > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleMassExport}
+                      className="group inline-flex items-center px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-semibold rounded-2xl shadow-lg hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-green-500/30 transition-all duration-300"
+                      title={`Export ${selectedResumes.length} selected resumes`}
+                    >
+                      <FileDown className="h-4 w-4 mr-2 group-hover:scale-110 transition-transform" />
+                      <span className="hidden sm:inline">Export</span> ({selectedResumes.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowBulkCommunication(true)}
+                      className="group inline-flex items-center px-4 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-semibold rounded-2xl shadow-lg hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-blue-500/30 transition-all duration-300"
+                      title={`Send update to ${selectedResumes.length} candidates`}
+                    >
+                      <Mail className="h-4 w-4 mr-2 group-hover:scale-110 transition-transform" />
+                      <span className="hidden sm:inline">Bulk Update</span> ({selectedResumes.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearSelection}
+                      className="group inline-flex items-center px-3 py-3 bg-white/80 hover:bg-white border border-slate-200/60 hover:border-slate-300/80 text-slate-700 hover:text-slate-900 font-medium rounded-2xl shadow-sm hover:shadow-md transition-all duration-300"
+                      title="Clear selection"
+                    >
+                      <span className="group-hover:scale-110 transition-transform">✕</span>
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowCommunicationHistory(true)}
+                  className="group inline-flex items-center px-4 py-3 bg-white/80 hover:bg-white border border-purple-200/60 hover:border-purple-300/80 text-purple-700 hover:text-purple-800 font-medium rounded-2xl shadow-sm hover:shadow-md transition-all duration-300"
+                  title="View communication history"
+                >
+                  <MessageSquare className="h-4 w-4 mr-2 group-hover:scale-110 transition-transform" />
+                  <span className="hidden sm:inline">History</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={cleanupOrphanedRecords}
+                  disabled={loading}
+                  className="group inline-flex items-center px-4 py-3 bg-white/80 hover:bg-white border border-yellow-200/60 hover:border-yellow-300/80 text-yellow-700 hover:text-yellow-800 font-medium rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Clean up database records for files that no longer exist"
+                >
+                  <span className="mr-2 group-hover:scale-110 transition-transform">🧹</span>
+                  <span className="hidden sm:inline">Cleanup</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRefresh}
+                  disabled={loading}
+                  className="group inline-flex items-center px-4 py-3 bg-white/80 hover:bg-white border border-slate-200/60 hover:border-slate-300/80 text-slate-700 hover:text-slate-900 font-medium rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 group-hover:scale-110 transition-transform ${loading ? 'animate-spin' : ''}`} />
+                  <span className="hidden sm:inline">Refresh</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Enhanced Upload Area */}
+        <div className="relative overflow-hidden bg-white/80 backdrop-blur-md border border-slate-200/60 rounded-3xl shadow-xl shadow-blue-500/10 mb-8">
+          <div className="absolute inset-0 bg-gradient-to-br from-white/90 to-slate-50/30"></div>
+          
+          <div
+            className={`relative p-8 border-2 border-dashed rounded-3xl transition-all duration-300 ${
+              dragActive
+                ? 'border-blue-400/60 bg-blue-50/50 scale-[1.02]'
+                : 'border-slate-300/60 hover:border-slate-400/60 hover:bg-slate-50/30'
+            }`}
+            onDragEnter={handleDrag}
+            onDragLeave={handleDrag}
+            onDragOver={handleDrag}
+            onDrop={handleDrop}
+          >
+            <div className="text-center">
+              <div className="relative inline-flex items-center justify-center mb-6">
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-500/20 to-indigo-600/20 rounded-2xl blur-lg"></div>
+                <div className="relative w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-xl">
+                  <Upload className="h-8 w-8 text-white" />
+                </div>
+              </div>
+              
+              <div className="space-y-3">
+                <label htmlFor="file-upload" className="cursor-pointer">
+                  <span className="block text-lg font-semibold text-slate-900 mb-2">
+                    Drop files here or click to upload
+                  </span>
+                  <input
+                    id="file-upload"
+                    name="file-upload"
+                    type="file"
+                    className="sr-only"
+                    multiple
+                    accept=".pdf,.txt,.docx"
+                    onChange={handleFileSelect}
+                  />
+                </label>
+                <p className="text-sm text-slate-500 font-medium">
+                  Supports PDF, DOCX, and TXT files up to 100MB each and you can upload 50 to 60 resumes at a time 
+                </p>
+                <div className="flex flex-wrap justify-center gap-3 pt-2">
+                  <span className="inline-flex items-center px-3 py-1.5 bg-blue-100/80 text-blue-700 text-xs font-medium rounded-xl">
+                    📄 PDF Files
+                  </span>
+                  <span className="inline-flex items-center px-3 py-1.5 bg-green-100/80 text-green-700 text-xs font-medium rounded-xl">
+                    📝 DOCX Files
+                  </span>
+                  <span className="inline-flex items-center px-3 py-1.5 bg-purple-100/80 text-purple-700 text-xs font-medium rounded-xl">
+                    📋 TXT Files
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Enhanced Upload Progress */}
+        {uploading && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="relative overflow-hidden bg-white/95 backdrop-blur-md border border-slate-200/60 rounded-3xl shadow-2xl shadow-blue-500/20 p-8 max-w-md w-full mx-4">
+              <div className="absolute inset-0 bg-gradient-to-br from-white/90 to-slate-50/30"></div>
+              
+              <div className="relative text-center">
                 {uploadProgress.total > 1 ? (
                   // Batch upload progress
-                  <div className="text-center">
-                    <div className="text-lg font-medium text-gray-900 mb-2">
+                  <div className="space-y-4">
+                    <div className="relative inline-flex items-center justify-center mb-4">
+                      <div className="absolute inset-0 bg-gradient-to-br from-blue-500/20 to-indigo-600/20 rounded-2xl blur-lg animate-pulse"></div>
+                      <div className="relative w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-xl">
+                        <Upload className="h-8 w-8 text-white animate-bounce" />
+                      </div>
+                    </div>
+                    
+                    <div className="text-xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent mb-2">
                       Uploading Files ({uploadProgress.completed + 1} of {uploadProgress.total})
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
-                      <div 
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
-                        style={{ width: `${((uploadProgress.completed) / uploadProgress.total) * 100}%` }}
+                    
+                    <div className="w-full bg-slate-200/60 rounded-full h-3 mb-4 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full transition-all duration-500 ease-out progress-gradient"
+                        style={{
+                          width: `${((uploadProgress.completed) / uploadProgress.total) * 100}%`
+                        }}
                       ></div>
                     </div>
-                    <div className="text-sm text-gray-600 mb-1">
-                      Currently processing: {uploadProgress.current}
-                    </div>
+                    
+                    <p className="text-sm font-medium text-slate-600 truncate">
+                      Current: {uploadProgress.current}
+                    </p>
+                    
                     {uploadProgress.failed > 0 && (
-                      <div className="text-sm text-red-600">
-                        {uploadProgress.failed} failed
-                      </div>
+                      <p className="text-sm font-medium text-red-600">
+                        {uploadProgress.failed} failed uploads
+                      </p>
                     )}
-                    <div className="text-xs text-gray-500 mt-2">
-                      Adding delays between uploads to prevent rate limiting...
-                    </div>
                   </div>
                 ) : (
                   // Single file upload
-                  <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                    <div className="text-sm text-gray-600">
-                      {uploadProgress.current || 'Uploading...'}
+                  <div className="space-y-4">
+                    <div className="relative inline-flex items-center justify-center mb-4">
+                      <div className="absolute inset-0 bg-gradient-to-br from-blue-500/20 to-indigo-600/20 rounded-2xl blur-lg animate-pulse"></div>
+                      <div className="relative w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-xl">
+                        <Upload className="h-8 w-8 text-white animate-bounce" />
+                      </div>
                     </div>
+                    
+                    <div className="text-xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                      Processing Resume...
+                    </div>
+                    
+                    <div className="w-full bg-slate-200/60 rounded-full h-3 overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full animate-pulse"></div>
+                    </div>
+                    
+                    <p className="text-sm font-medium text-slate-600">
+                      Extracting text and generating AI embeddings
+                    </p>
                   </div>
                 )}
               </div>
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+        )}
 
-      {/* Search */}
-      <div className="mt-8">
-        <div className="relative">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <Search className="h-5 w-5 text-gray-400" />
-          </div>
-          <input
-            type="text"
-            className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            placeholder="Search resumes..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-      </div>
-
-      {/* Selection Controls */}
-      {filteredResumes.length > 0 && (
-        <div className="mt-4 flex items-center justify-between bg-gray-50 px-4 py-2 rounded-md">
-          <div className="flex items-center space-x-4">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={selectedResumes.length === filteredResumes.length}
-                onChange={(e) => e.target.checked ? selectAllResumes() : clearSelection()}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              <span className="ml-2 text-sm text-gray-700">
-                Select All ({filteredResumes.length})
-              </span>
-            </label>
-            {selectedResumes.length > 0 && (
-              <span className="text-sm text-blue-600 font-medium">
-                {selectedResumes.length} selected
-              </span>
-            )}
-          </div>
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-500">
-              <Users className="h-4 w-4 inline mr-1" />
-              {filteredResumes.length} candidates
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Resume List */}
-      <div className="mt-8">
-        {loading ? (
-          <div className="text-center py-4">
-            <div className="text-sm text-gray-500">Loading resumes...</div>
-          </div>
-        ) : filteredResumes.length === 0 ? (
-          <div className="text-center py-12">
-            <File className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No resumes</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Get started by uploading your first resume.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredResumes.map((resume) => (
-              <div
-                key={resume.id}
-                className="relative bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow duration-200 border border-gray-200"
-              >
-                {selectedResumes.includes(resume.id) && (
-                  <div className="absolute inset-0 bg-blue-50 rounded-lg border-2 border-blue-500"></div>
-                )}
-                
-                {/* Selection checkbox */}
-                <div className="absolute top-4 left-4 z-10">
-                  <input
-                    type="checkbox"
-                    checked={selectedResumes.includes(resume.id)}
-                    onChange={() => toggleResumeSelection(resume.id)}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
+        {/* Enhanced Resume Grid/List */}
+        <div className="relative overflow-hidden bg-white/80 backdrop-blur-md border border-slate-200/60 rounded-3xl shadow-xl shadow-blue-500/10">
+          <div className="absolute inset-0 bg-gradient-to-br from-white/90 to-slate-50/30"></div>
+          
+          <div className="relative p-6 sm:p-8">
+            {/* Selection Controls */}
+            {filteredResumes.length > 0 && (
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 pb-6 border-b border-slate-200/60">
+                <div className="flex items-center space-x-4 mb-4 sm:mb-0">
+                  <button
+                    onClick={selectedResumes.length === filteredResumes.length ? clearSelection : selectAllResumes}
+                    className="inline-flex items-center px-4 py-2 bg-white/80 hover:bg-white border border-slate-200/60 hover:border-slate-300/80 text-slate-700 hover:text-slate-900 font-medium rounded-xl shadow-sm hover:shadow-md transition-all duration-300"
+                  >
+                    {selectedResumes.length === filteredResumes.length ? (
+                      <>
+                        <input type="checkbox" checked className="mr-2 rounded" readOnly />
+                        Deselect All
+                      </>
+                    ) : (
+                      <>
+                        <input type="checkbox" checked={false} className="mr-2 rounded" readOnly />
+                        Select All ({filteredResumes.length})
+                      </>
+                    )}
+                  </button>
+                  
+                  {selectedResumes.length > 0 && (
+                    <span className="inline-flex items-center px-3 py-1.5 bg-blue-100/80 text-blue-700 text-sm font-medium rounded-xl">
+                      {selectedResumes.length} selected
+                    </span>
+                  )}
                 </div>
                 
-                <div className="relative z-10 ml-8">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center flex-1 min-w-0">
-                      <File className={`h-8 w-8 flex-shrink-0 ${resume.file_path ? 'text-blue-500' : 'text-orange-500'}`} />
-                      <div className="ml-3 flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {resume.filename}
-                          {!resume.file_path && (
-                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
-                              Text Only
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {formatFileSize(resume.file_size)} • {new Date(resume.created_at).toLocaleDateString()}
-                        </p>
-                        {/* AI Embedding Status */}
-                        <div className="mt-1">
-                          {resume.embedding && resume.embedding.length > 0 ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                              <span className="w-1.5 h-1.5 bg-green-400 rounded-full mr-1"></span>
-                              AI Ready
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
-                              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full mr-1"></span>
-                              No AI Embedding
-                            </span>
-                          )}
+                <div className="text-sm text-slate-600 font-medium">
+                  {filteredResumes.length} of {resumes.length} resumes
+                  {searchTerm && <span className="text-blue-600"> (filtered)</span>}
+                </div>
+              </div>
+            )}
+
+            {/* Resume Content */}
+            {loading ? (
+              <div className="text-center py-12">
+                <div className="relative inline-flex items-center justify-center mb-4">
+                  <div className="w-16 h-16 bg-gradient-to-br from-blue-500/20 to-indigo-600/20 rounded-2xl flex items-center justify-center">
+                    <RefreshCw className="h-8 w-8 text-blue-500 animate-spin" />
+                  </div>
+                </div>
+                <div className="text-lg font-semibold text-slate-700">Loading resumes...</div>
+                <div className="text-sm text-slate-500 mt-1">Please wait while we fetch your data</div>
+              </div>
+            ) : filteredResumes.length === 0 ? (
+              <div className="text-center py-16">
+                <div className="relative inline-flex items-center justify-center mb-6">
+                  <div className="absolute inset-0 bg-gradient-to-br from-slate-500/10 to-slate-600/10 rounded-2xl blur-lg"></div>
+                  <div className="relative w-20 h-20 bg-gradient-to-br from-slate-500/20 to-slate-600/20 rounded-2xl flex items-center justify-center">
+                    <File className="h-10 w-10 text-slate-500" />
+                  </div>
+                </div>
+                <h3 className="text-xl font-semibold text-slate-700 mb-2">
+                  {searchTerm ? 'No matching resumes found' : 'No resumes yet'}
+                </h3>
+                <p className="text-slate-500 font-medium mb-6 max-w-sm mx-auto">
+                  {searchTerm 
+                    ? `Try adjusting your search term "${searchTerm}" or clear the filter to see all resumes.`
+                    : 'Upload your first resume to start building your candidate database.'
+                  }
+                </p>
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    className="inline-flex items-center px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
+                  >
+                    Clear Search
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {filteredResumes.map((resume, index) => (
+                  <div
+                    key={resume.id}
+                    className={`group relative overflow-hidden bg-white/80 backdrop-blur-sm border border-slate-200/60 rounded-2xl shadow-sm hover:shadow-xl hover:shadow-blue-500/10 transition-all duration-300 hover:scale-[1.02] animate-fade-in-scale ${
+                      selectedResumes.includes(resume.id) 
+                        ? 'ring-2 ring-blue-500/60 bg-blue-50/50' 
+                        : ''
+                    }`}
+                    style={{ animationDelay: `${index * 50}ms` }}
+                  >
+                    {/* Selection Overlay */}
+                    {selectedResumes.includes(resume.id) && (
+                      <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-indigo-500/5 rounded-2xl"></div>
+                    )}
+                    
+                    <div className="relative p-6">
+                      {/* Header with Checkbox */}
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center space-x-3 flex-1 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={selectedResumes.includes(resume.id)}
+                            onChange={() => toggleResumeSelection(resume.id)}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/30 transition-all duration-200"
+                          />
+                          
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center space-x-2 mb-1">
+                              <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${
+                                resume.file_path 
+                                  ? 'bg-gradient-to-br from-blue-500 to-indigo-600' 
+                                  : 'bg-gradient-to-br from-orange-500 to-red-600'
+                              } shadow-lg`}>
+                                <File className="h-5 w-5 text-white" />
+                              </div>
+                              
+                              <div className="flex-1 min-w-0">
+                                <h3 className="text-sm font-semibold text-slate-900 truncate group-hover:text-blue-600 transition-colors">
+                                  {resume.filename}
+                                </h3>
+                                <div className="flex items-center space-x-2 mt-1">
+                                  <span className="text-xs text-slate-500 font-medium">
+                                    {formatFileSize(resume.file_size)}
+                                  </span>
+                                  <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                                  <span className="text-xs text-slate-500 font-medium">
+                                    {new Date(resume.created_at).toLocaleDateString()}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                         </div>
+                      </div>
+
+                      {/* Status Badges */}
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {!resume.file_path && (
+                          <span className="inline-flex items-center px-2.5 py-1 bg-orange-100/80 text-orange-700 text-xs font-medium rounded-lg">
+                            📝 Text Only
+                          </span>
+                        )}
+                        
+                        {resume.embedding && resume.embedding.length > 0 ? (
+                          <span className="inline-flex items-center px-2.5 py-1 bg-green-100/80 text-green-700 text-xs font-medium rounded-lg">
+                            <span className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1.5 animate-pulse"></span>
+                            AI Ready
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-1 bg-slate-100/80 text-slate-600 text-xs font-medium rounded-lg">
+                            <span className="w-1.5 h-1.5 bg-slate-400 rounded-full mr-1.5"></span>
+                            No AI Embedding
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center justify-between pt-4 border-t border-slate-200/60">
+                        <div className="flex space-x-2">
+                          {(!resume.embedding || resume.embedding.length === 0) && (
+                            <button
+                              onClick={() => regenerateEmbedding(resume.id, resume.filename)}
+                              className="group/btn inline-flex items-center px-3 py-2 bg-purple-100/80 hover:bg-purple-200/80 text-purple-700 hover:text-purple-800 text-xs font-medium rounded-xl shadow-sm hover:shadow-md transition-all duration-300"
+                              title="Generate AI embedding"
+                            >
+                              <Zap className="h-3.5 w-3.5 mr-1.5 group-hover/btn:scale-110 transition-transform" />
+                              Generate AI
+                            </button>
+                          )}
+                          
+                          <button
+                            onClick={() => viewResume(resume.file_path, resume.content, resume.filename)}
+                            className="group/btn inline-flex items-center px-3 py-2 bg-blue-100/80 hover:bg-blue-200/80 text-blue-700 hover:text-blue-800 text-xs font-medium rounded-xl shadow-sm hover:shadow-md transition-all duration-300"
+                            title={resume.file_path ? 'View file' : 'View text content'}
+                          >
+                            <Eye className="h-3.5 w-3.5 mr-1.5 group-hover/btn:scale-110 transition-transform" />
+                            View
+                          </button>
+                        </div>
+                        
+                        <button
+                          onClick={() => deleteResume(resume.id, resume.file_path)}
+                          className="group/btn inline-flex items-center px-3 py-2 bg-red-100/80 hover:bg-red-200/80 text-red-700 hover:text-red-800 text-xs font-medium rounded-xl shadow-sm hover:shadow-md transition-all duration-300"
+                          title="Delete resume"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 group-hover/btn:scale-110 transition-transform" />
+                        </button>
                       </div>
                     </div>
                     
-                    <div className="flex space-x-2 ml-4">
-                      {/* Regenerate embedding button - only show if no embedding */}
-                      {(!resume.embedding || resume.embedding.length === 0) && (
-                        <button
-                          onClick={() => regenerateEmbedding(resume.id, resume.filename)}
-                          className="text-purple-600 hover:text-purple-800 transition-colors duration-200 p-1 hover:bg-purple-50 rounded"
-                          title="Generate AI embedding"
-                        >
-                          <Zap className="h-4 w-4" />
-                        </button>
+                    {/* Hover Effect Overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 to-indigo-500/0 group-hover:from-blue-500/5 group-hover:to-indigo-500/5 rounded-2xl transition-all duration-300 pointer-events-none"></div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Enhanced Modal for Bulk Communication */}
+        {showBulkCommunication && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm overflow-y-auto h-full w-full z-50">
+            <div className="relative top-8 mx-auto p-5 w-11/12 md:w-3/4 lg:w-1/2 max-w-4xl">
+              <div className="relative overflow-hidden bg-white/95 backdrop-blur-md border border-slate-200/60 rounded-3xl shadow-2xl shadow-blue-500/20">
+                <div className="absolute inset-0 bg-gradient-to-br from-white/90 to-slate-50/30"></div>
+                
+                <div className="relative p-6 sm:p-8">
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg">
+                        <Mail className="h-6 w-6 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                          Send Bulk Update
+                        </h3>
+                        <p className="text-sm text-slate-600 font-medium">
+                          Communicate with {selectedResumes.length} selected candidates
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setShowBulkCommunication(false)}
+                      className="w-10 h-10 bg-slate-100/80 hover:bg-slate-200/80 rounded-xl flex items-center justify-center text-slate-600 hover:text-slate-800 transition-all duration-200"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-6">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-3">
+                        Update Title
+                      </label>
+                      <input
+                        type="text"
+                        value={bulkTitle}
+                        onChange={(e) => setBulkTitle(e.target.value)}
+                        placeholder="e.g., Application Status Update, Interview Invitation..."
+                        className="w-full px-4 py-3 bg-white/80 border border-slate-200/60 hover:border-slate-300/80 focus:border-blue-500/60 rounded-2xl shadow-sm hover:shadow-md focus:shadow-lg focus:outline-none focus:ring-4 focus:ring-blue-500/20 transition-all duration-300 placeholder-slate-500 text-slate-900 font-medium"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-3">
+                        Message Content
+                      </label>
+                      <textarea
+                        value={bulkMessage}
+                        onChange={(e) => setBulkMessage(e.target.value)}
+                        placeholder="Enter your update message for the selected candidates..."
+                        rows={6}
+                        className="w-full px-4 py-3 bg-white/80 border border-slate-200/60 hover:border-slate-300/80 focus:border-blue-500/60 rounded-2xl shadow-sm hover:shadow-md focus:shadow-lg focus:outline-none focus:ring-4 focus:ring-blue-500/20 transition-all duration-300 placeholder-slate-500 text-slate-900 font-medium resize-none"
+                      />
+                    </div>
+
+                    {/* Email Configuration */}
+                    <div className="relative overflow-hidden bg-slate-50/80 border border-slate-200/60 rounded-2xl p-6">
+                      <div className="flex items-center space-x-3 mb-4">
+                        <input
+                          type="checkbox"
+                          id="sendRealEmails"
+                          checked={sendRealEmails}
+                          onChange={(e) => setSendRealEmails(e.target.checked)}
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/30"
+                        />
+                        <label htmlFor="sendRealEmails" className="text-sm font-semibold text-slate-700">
+                          📧 Send real emails to candidates
+                        </label>
+                      </div>
+                      
+                      {sendRealEmails && (
+                        <div className={`p-4 rounded-xl border ${
+                          import.meta.env.VITE_EMAILJS_SERVICE_ID 
+                            ? 'bg-green-50/80 border-green-200/60' 
+                            : 'bg-yellow-50/80 border-yellow-200/60'
+                        }`}>
+                          <div className="text-sm">
+                            {import.meta.env.VITE_EMAILJS_SERVICE_ID ? (
+                              <div className="text-green-700">
+                                <strong>✅ EmailJS configured</strong> - Ready for professional email sending
+                                <br />Emails will be sent directly to extracted candidate addresses
+                              </div>
+                            ) : (
+                              <div className="text-yellow-700">
+                                <strong>⚠️ EmailJS not configured</strong> - Will use email client fallback
+                                <br />Set up EmailJS for direct sending: VITE_EMAILJS_SERVICE_ID, VITE_EMAILJS_TEMPLATE_ID, VITE_EMAILJS_PUBLIC_KEY
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       )}
-                      <button
-                        onClick={() => viewResume(resume.file_path, resume.content, resume.filename)}
-                        className="text-blue-600 hover:text-blue-800 transition-colors duration-200 p-1 hover:bg-blue-50 rounded"
-                        title={resume.file_path ? 'View file' : 'View text content'}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => deleteResume(resume.id, resume.file_path)}
-                        className="text-red-600 hover:text-red-800 transition-colors duration-200 p-1 hover:bg-red-50 rounded"
-                        title="Delete resume"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      
+                      {!sendRealEmails && (
+                        <div className="p-4 bg-blue-50/80 border border-blue-200/60 rounded-xl">
+                          <p className="text-sm text-blue-700">
+                            <strong>📋 Tracking Mode:</strong> Creates communication record for tracking only. No emails sent.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
+                  
+                  <div className="flex justify-end space-x-3 mt-8 pt-6 border-t border-slate-200/60">
+                    <button
+                      onClick={() => setShowBulkCommunication(false)}
+                      className="px-6 py-3 bg-white/80 hover:bg-white border border-slate-200/60 hover:border-slate-300/80 text-slate-700 hover:text-slate-900 font-medium rounded-2xl shadow-sm hover:shadow-md transition-all duration-300"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleBulkCommunication}
+                      disabled={!bulkTitle.trim() || !bulkMessage.trim() || emailSending}
+                      className="px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-semibold rounded-2xl shadow-lg hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
+                    >
+                      {emailSending ? 'Sending...' : sendRealEmails ? 'Send Emails' : 'Create Record'}
+                    </button>
+                  </div>
                 </div>
               </div>
-            ))}
+            </div>
           </div>
         )}
-      </div>
 
-      {/* Bulk Communication Modal */}
-      {showBulkCommunication && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
-            <div className="mt-3">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-gray-900">
-                  Send Bulk Update to {selectedResumes.length} Candidates
-                </h3>
-                <button
-                  onClick={() => setShowBulkCommunication(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  ✕
-                </button>
+        {/* Enhanced Communication History Modal */}
+        {showCommunicationHistory && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm overflow-y-auto h-full w-full z-50">
+            <div className="relative top-8 mx-auto p-5 w-11/12 md:w-3/4 lg:w-2/3 max-w-5xl">
+              <div className="relative overflow-hidden bg-white/95 backdrop-blur-md border border-slate-200/60 rounded-3xl shadow-2xl shadow-blue-500/20">
+                <div className="absolute inset-0 bg-gradient-to-br from-white/90 to-slate-50/30"></div>
+                
+                <div className="relative p-6 sm:p-8">
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-600 rounded-2xl flex items-center justify-center shadow-lg">
+                        <MessageSquare className="h-6 w-6 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                          Communication History
+                        </h3>
+                        <p className="text-sm text-slate-600 font-medium">
+                          Track all your candidate communications
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setShowCommunicationHistory(false)}
+                      className="w-10 h-10 bg-slate-100/80 hover:bg-slate-200/80 rounded-xl flex items-center justify-center text-slate-600 hover:text-slate-800 transition-all duration-200"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  
+                  <div className="max-h-96 overflow-y-auto">
+                    {loadingCommunications ? (
+                      <div className="text-center py-12">
+                        <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                        <div className="text-slate-600 font-medium">Loading communications...</div>
+                      </div>
+                    ) : communications.length === 0 ? (
+                      <div className="text-center py-16">
+                        <div className="w-16 h-16 bg-gradient-to-br from-slate-500/20 to-slate-600/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                          <MessageSquare className="h-8 w-8 text-slate-500" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-slate-700 mb-2">No communications yet</h3>
+                        <p className="text-slate-500 font-medium">
+                          Your bulk communications will appear here once you start sending updates.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {communications.map((comm) => (
+                          <div key={comm.id} className="bg-white/80 border border-slate-200/60 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all duration-300">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-3 mb-2">
+                                  <h4 className="font-semibold text-slate-900">{comm.title}</h4>
+                                  <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium ${
+                                    comm.status === 'sent' ? 'bg-green-100/80 text-green-700' :
+                                    comm.status === 'failed' ? 'bg-red-100/80 text-red-700' :
+                                    'bg-yellow-100/80 text-yellow-700'
+                                  }`}>
+                                    {comm.status}
+                                  </span>
+                                </div>
+                                <p className="text-slate-600 mb-3 leading-relaxed">{comm.message}</p>
+                                <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
+                                  <span className="flex items-center">
+                                    📅 {new Date(comm.created_at).toLocaleDateString()}
+                                  </span>
+                                  <span className="flex items-center">
+                                    👥 {comm.total_recipients} recipients
+                                  </span>
+                                  <span className="flex items-center">
+                                    ✅ {comm.successful_deliveries} delivered
+                                  </span>
+                                  {comm.failed_deliveries > 0 && (
+                                    <span className="flex items-center text-red-600">
+                                      ❌ {comm.failed_deliveries} failed
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Update Title
-                  </label>
-                  <input
-                    type="text"
-                    value={bulkTitle}
-                    onChange={(e) => setBulkTitle(e.target.value)}
-                    placeholder="e.g., Application Status Update, Interview Invitation..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Communication Modal */}
+        {showBulkCommunication && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+            <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
+              <div className="mt-3">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-medium text-gray-900">
+                    Send Bulk Update to {selectedResumes.length} Candidates
+                  </h3>
+                  <button
+                    onClick={() => setShowBulkCommunication(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    ✕
+                  </button>
                 </div>
                 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Message
-                  </label>
-                  <textarea
-                    value={bulkMessage}
-                    onChange={(e) => setBulkMessage(e.target.value)}
-                    placeholder="Enter your update message for the selected candidates..."
-                    rows={6}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                {/* Email sending option */}
-                <div className="border rounded-md p-4 bg-gray-50">
-                  <div className="flex items-center space-x-3">
-                    <input
-                      type="checkbox"
-                      id="sendRealEmails"
-                      checked={sendRealEmails}
-                      onChange={(e) => setSendRealEmails(e.target.checked)}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <label htmlFor="sendRealEmails" className="text-sm font-medium text-gray-700">
-                      📧 Send real emails to candidates
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Update Title
                     </label>
+                    <input
+                      type="text"
+                      value={bulkTitle}
+                      onChange={(e) => setBulkTitle(e.target.value)}
+                      placeholder="e.g., Application Status Update, Interview Invitation..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
-                  {sendRealEmails && (
-                    <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                      <p className="text-sm text-yellow-800">
-                        <strong>⚙️ Email Setup Options:</strong> 
-                        <br />
-                        <strong>Option 1 (Recommended):</strong> EmailJS - Browser-compatible
-                        <br />• Sign up at <a href="https://emailjs.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">emailjs.com</a>
-                        <br />• Add <code>VITE_EMAILJS_SERVICE_ID</code>, <code>VITE_EMAILJS_TEMPLATE_ID</code>, <code>VITE_EMAILJS_PUBLIC_KEY</code>
-                        <br />• Restart dev server after adding variables
-                        <br />
-                        <strong>Option 2 (Fallback):</strong> Opens your default email client
-                        <br />• Works without setup for testing
-                        <br />• Emails will be extracted automatically from resume content
-                        <br />
-                        {!import.meta.env.VITE_EMAILJS_SERVICE_ID && (
-                          <span className="text-orange-600">
-                            <br />⚠️ <strong>EmailJS not configured</strong> - will use email client fallback
-                          </span>
-                        )}
-                        {import.meta.env.VITE_EMAILJS_SERVICE_ID && (
-                          <span className="text-green-600">
-                            <br />✅ <strong>EmailJS configured</strong> - ready for professional email sending
-                          </span>
-                        )}
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Message
+                    </label>
+                    <textarea
+                      value={bulkMessage}
+                      onChange={(e) => setBulkMessage(e.target.value)}
+                      placeholder="Enter your update message for the selected candidates..."
+                      rows={6}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  {/* Email sending option */}
+                  <div className="border rounded-md p-4 bg-gray-50">
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="checkbox"
+                        id="sendRealEmails"
+                        checked={sendRealEmails}
+                        onChange={(e) => setSendRealEmails(e.target.checked)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <label htmlFor="sendRealEmails" className="text-sm font-medium text-gray-700">
+                        📧 Send real emails to candidates
+                      </label>
+                    </div>
+                    {sendRealEmails && (
+                      <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                        <p className="text-sm text-yellow-800">
+                          <strong>⚙️ Email Setup Options:</strong> 
+                          <br />
+                          <strong>Option 1 (Recommended):</strong> EmailJS - Browser-compatible
+                          <br />• Sign up at <a href="https://emailjs.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">emailjs.com</a>
+                          <br />• Add <code>VITE_EMAILJS_SERVICE_ID</code>, <code>VITE_EMAILJS_TEMPLATE_ID</code>, <code>VITE_EMAILJS_PUBLIC_KEY</code>
+                          <br />• Restart dev server after adding variables
+                          <br />
+                          <strong>Option 2 (Fallback):</strong> Opens your default email client
+                          <br />• Works without setup for testing
+                          <br />• Emails will be extracted automatically from resume content
+                          <br />
+                          {!import.meta.env.VITE_EMAILJS_SERVICE_ID && (
+                            <span className="text-orange-600">
+                              <br />⚠️ <strong>EmailJS not configured</strong> - will use email client fallback
+                            </span>
+                          )}
+                          {import.meta.env.VITE_EMAILJS_SERVICE_ID && (
+                            <span className="text-green-600">
+                              <br />✅ <strong>EmailJS configured</strong> - ready for professional email sending
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {!sendRealEmails ? (
+                    <div className="bg-blue-50 p-3 rounded-md">
+                      <p className="text-sm text-blue-800">
+                        <strong>📋 Tracking Mode:</strong> This will create a communication record for tracking purposes only. 
+                        No actual emails will be sent.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="bg-green-50 p-3 rounded-md">
+                      <p className="text-sm text-green-800">
+                        <strong>📧 Email Mode:</strong> Real emails will be sent to candidates. 
+                        Email addresses will be automatically extracted from resume content.
                       </p>
                     </div>
                   )}
                 </div>
                 
-                {!sendRealEmails ? (
-                  <div className="bg-blue-50 p-3 rounded-md">
-                    <p className="text-sm text-blue-800">
-                      <strong>📋 Tracking Mode:</strong> This will create a communication record for tracking purposes only. 
-                      No actual emails will be sent.
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    onClick={() => setShowBulkCommunication(false)}
+                    disabled={emailSending}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-md"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleBulkCommunication}
+                    disabled={!bulkTitle.trim() || !bulkMessage.trim() || emailSending}
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md flex items-center"
+                  >
+                    {emailSending ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        {sendRealEmails ? 'Sending Emails...' : 'Creating Record...'}
+                      </>
+                    ) : (
+                      sendRealEmails ? '📧 Send Emails' : '📋 Create Record'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Communication History Modal */}
+        {showCommunicationHistory && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+            <div className="relative top-10 mx-auto p-5 border w-11/12 md:w-4/5 lg:w-3/4 shadow-lg rounded-md bg-white">
+              <div className="mt-3">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-medium text-gray-900">
+                    Communication History
+                  </h3>
+                  <button
+                    onClick={() => setShowCommunicationHistory(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    ✕
+                  </button>
+                </div>
+                
+                {loadingCommunications ? (
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                    <p className="mt-2 text-sm text-gray-500">Loading communications...</p>
+                  </div>
+                ) : communications.length === 0 ? (
+                  <div className="text-center py-8">
+                    <MessageSquare className="mx-auto h-12 w-12 text-gray-400" />
+                    <h3 className="mt-2 text-sm font-medium text-gray-900">No communications yet</h3>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Your bulk communications will appear here.
                     </p>
                   </div>
                 ) : (
-                  <div className="bg-green-50 p-3 rounded-md">
-                    <p className="text-sm text-green-800">
-                      <strong>📧 Email Mode:</strong> Real emails will be sent to candidates. 
-                      Email addresses will be automatically extracted from resume content.
-                    </p>
-                  </div>
-                )}
-              </div>
-              
-              <div className="flex justify-end space-x-3 mt-6">
-                <button
-                  onClick={() => setShowBulkCommunication(false)}
-                  disabled={emailSending}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-md"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleBulkCommunication}
-                  disabled={!bulkTitle.trim() || !bulkMessage.trim() || emailSending}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md flex items-center"
-                >
-                  {emailSending ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      {sendRealEmails ? 'Sending Emails...' : 'Creating Record...'}
-                    </>
-                  ) : (
-                    sendRealEmails ? '📧 Send Emails' : '📋 Create Record'
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Communication History Modal */}
-      {showCommunicationHistory && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-10 mx-auto p-5 border w-11/12 md:w-4/5 lg:w-3/4 shadow-lg rounded-md bg-white">
-            <div className="mt-3">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-gray-900">
-                  Communication History
-                </h3>
-                <button
-                  onClick={() => setShowCommunicationHistory(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  ✕
-                </button>
-              </div>
-              
-              {loadingCommunications ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                  <p className="mt-2 text-sm text-gray-500">Loading communications...</p>
-                </div>
-              ) : communications.length === 0 ? (
-                <div className="text-center py-8">
-                  <MessageSquare className="mx-auto h-12 w-12 text-gray-400" />
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">No communications yet</h3>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Your bulk communications will appear here.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-4 max-h-96 overflow-y-auto">
-                  {communications.map((comm) => (
-                    <div key={comm.id} className="border rounded-lg p-4 bg-gray-50">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2">
-                            <h4 className="font-medium text-gray-900">{comm.title}</h4>
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                              comm.status === 'sent' ? 'bg-green-100 text-green-800' :
-                              comm.status === 'failed' ? 'bg-red-100 text-red-800' :
-                              'bg-yellow-100 text-yellow-800'
-                            }`}>
-                              {comm.status}
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-600 mt-1">{comm.message}</p>
-                          <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
-                            <span>📅 {new Date(comm.created_at).toLocaleDateString()}</span>
-                            <span>👥 {comm.total_recipients} recipients</span>
-                            <span>✅ {comm.successful_deliveries} delivered</span>
-                            {comm.failed_deliveries > 0 && (
-                              <span className="text-red-600">❌ {comm.failed_deliveries} failed</span>
-                            )}
+                  <div className="space-y-4 max-h-96 overflow-y-auto">
+                    {communications.map((comm) => (
+                      <div key={comm.id} className="border rounded-lg p-4 bg-gray-50">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-2">
+                              <h4 className="font-medium text-gray-900">{comm.title}</h4>
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                comm.status === 'sent' ? 'bg-green-100 text-green-800' :
+                                comm.status === 'failed' ? 'bg-red-100 text-red-800' :
+                                'bg-yellow-100 text-yellow-800'
+                              }`}>
+                                {comm.status}
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-600 mt-1">{comm.message}</p>
+                            <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
+                              <span>📅 {new Date(comm.created_at).toLocaleDateString()}</span>
+                              <span>👥 {comm.total_recipients} recipients</span>
+                              <span>✅ {comm.successful_deliveries} delivered</span>
+                              {comm.failed_deliveries > 0 && (
+                                <span className="text-red-600">❌ {comm.failed_deliveries} failed</span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }
