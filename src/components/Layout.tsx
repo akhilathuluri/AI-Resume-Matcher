@@ -18,13 +18,25 @@ export function Layout({ children }: LayoutProps) {
     
     setSigningOut(true)
     try {
+      console.log('Layout: Starting sign out...')
       await signOut()
-      // Navigate to home page after successful sign out
+      console.log('Layout: Sign out completed, navigating to home...')
+      
+      // Navigate to home page and force a full page reload to clear any cached state
       navigate('/')
+      
+      // Small delay then force reload to ensure all state is cleared
+      setTimeout(() => {
+        window.location.href = '/'
+      }, 100)
+      
     } catch (error) {
       console.error('Sign out failed:', error)
-      // Show an error message or handle the error appropriately
-      alert('Failed to sign out. Please try again.')
+      // Even if sign out fails, still navigate and reload
+      navigate('/')
+      setTimeout(() => {
+        window.location.href = '/'
+      }, 100)
     } finally {
       setSigningOut(false)
     }
