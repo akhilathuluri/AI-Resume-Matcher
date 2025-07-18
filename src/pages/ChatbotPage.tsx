@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { Send, Bot, User, FileText, ExternalLink, Trash2 } from 'lucide-react'
+import { Send, Bot, User, FileText, ExternalLink, Trash2, Mail } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { sendBulkEmail, extractEmailFromContent, validateEmail, type EmailResult } from '../lib/emailServiceBrowser'
 
 interface Message {
   id: string
@@ -112,9 +113,148 @@ export function ChatbotPage() {
   const [loading, setLoading] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  
+  // Email modal state
+  const [showEmailModal, setShowEmailModal] = useState(false)
+  const [selectedResume, setSelectedResume] = useState<{
+    id: string
+    filename: string
+    content?: string
+    file_path: string
+  } | null>(null)
+  const [emailTitle, setEmailTitle] = useState('')
+  const [emailMessage, setEmailMessage] = useState('')
+  const [sendRealEmails, setSendRealEmails] = useState(false)
+  const [emailSending, setEmailSending] = useState(false)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  // Handle single resume email
+  const handleSingleEmail = async () => {
+    if (!user || !selectedResume || !emailTitle.trim() || !emailMessage.trim()) {
+      alert('Please fill in title and message')
+      return
+    }
+
+    setEmailSending(true)
+    try {
+      let emailResults: EmailResult[] = []
+      let successful_deliveries = 0
+      let failed_deliveries = 0
+
+      if (sendRealEmails) {
+        // Extract email from resume content
+        const email = selectedResume.content ? extractEmailFromContent(selectedResume.content) : null
+        
+        if (!email || !validateEmail(email)) {
+          alert('No valid email address found in this resume')
+          setEmailSending(false)
+          return
+        }
+
+        // Send email
+        emailResults = await sendBulkEmail({
+          to: [email],
+          subject: emailTitle.trim(),
+          message: emailMessage.trim(),
+          senderName: 'ResumeAI Team',
+        })
+
+        successful_deliveries = emailResults.filter(r => r.success).length
+        failed_deliveries = emailResults.filter(r => !r.success).length
+
+        if (successful_deliveries === 0) {
+          alert('Failed to send email. Please check your email configuration.')
+          setEmailSending(false)
+          return
+        }
+      } else {
+        // Mock successful delivery for tracking only
+        successful_deliveries = 1
+        failed_deliveries = 0
+      }
+
+      // Create communication record
+      const { data: communication, error: commError } = await supabase
+        .from('communications')
+        .insert([{
+          user_id: user.id,
+          title: emailTitle.trim(),
+          message: emailMessage.trim(),
+          communication_type: sendRealEmails ? 'email' : 'bulk_update',
+          status: failed_deliveries === 0 ? 'sent' : (successful_deliveries > 0 ? 'sent' : 'failed'),
+          total_recipients: 1,
+          successful_deliveries,
+          failed_deliveries
+        }])
+        .select()
+        .single()
+
+      if (commError) throw commError
+
+      // Create recipient record
+      const { error: recipientError } = await supabase
+        .from('communication_recipients')
+        .insert([{
+          communication_id: communication.id,
+          resume_id: selectedResume.id,
+          user_id: user.id,
+          delivery_status: sendRealEmails 
+            ? (emailResults[0]?.success ? 'delivered' : 'failed') 
+            : 'delivered',
+          delivered_at: sendRealEmails && emailResults[0]?.success 
+            ? new Date().toISOString() 
+            : (sendRealEmails ? null : new Date().toISOString()),
+          error_message: sendRealEmails && !emailResults[0]?.success 
+            ? emailResults[0]?.error 
+            : null
+        }])
+
+      if (recipientError) throw recipientError
+
+      // Show success message
+      if (sendRealEmails) {
+        if (failed_deliveries === 0) {
+          alert('Email sent successfully!')
+        } else {
+          alert('Failed to send email')
+        }
+      } else {
+        alert('Communication recorded successfully')
+      }
+
+      // Reset modal
+      setEmailTitle('')
+      setEmailMessage('')
+      setShowEmailModal(false)
+      setSendRealEmails(false)
+      setSelectedResume(null)
+    } catch (error) {
+      console.error('Error sending email:', error)
+      alert('Error sending email. Please try again.')
+    } finally {
+      setEmailSending(false)
+    }
+  }
+
+  // Open email modal for specific resume
+  const openEmailModal = (resume: {
+    id: string
+    filename: string
+    content?: string
+    file_path: string
+  }) => {
+    setSelectedResume(resume)
+    setEmailTitle(`Follow-up regarding your application`)
+    setEmailMessage(`Dear Candidate,
+
+Thank you for your interest in our position. We have reviewed your resume and would like to discuss next steps.
+
+Best regards,
+ResumeAI Team`)
+    setShowEmailModal(true)
   }
 
   // Load chat history from database
@@ -771,13 +911,27 @@ If the user asks about resume matching specifically, tell them to provide a job 
                                         </div>
                                       </div>
                                     </div>
-                                    <button
-                                      onClick={() => viewResume(resume.file_path, resume.content, resume.filename)}
-                                      className="flex-shrink-0 p-2 text-blue-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200 group-hover/resume:scale-110"
-                                      title="View resume"
-                                    >
-                                      <ExternalLink className="w-4 h-4" />
-                                    </button>
+                                    <div className="flex items-center space-x-2">
+                                      <button
+                                        onClick={() => openEmailModal({
+                                          id: resume.id,
+                                          filename: resume.filename,
+                                          content: resume.content,
+                                          file_path: resume.file_path
+                                        })}
+                                        className="flex-shrink-0 p-2 text-green-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all duration-200 group-hover/resume:scale-110"
+                                        title="Send email"
+                                      >
+                                        <Mail className="w-4 h-4" />
+                                      </button>
+                                      <button
+                                        onClick={() => viewResume(resume.file_path, resume.content, resume.filename)}
+                                        className="flex-shrink-0 p-2 text-blue-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200 group-hover/resume:scale-110"
+                                        title="View resume"
+                                      >
+                                        <ExternalLink className="w-4 h-4" />
+                                      </button>
+                                    </div>
                                   </div>
                                 ))}
                               </div>
@@ -843,6 +997,131 @@ If the user asks about resume matching specifically, tell them to provide a job 
           </div>
         </div>
       </div>
+
+      {/* Email Modal */}
+      {showEmailModal && selectedResume && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm overflow-y-auto h-full w-full z-50">
+          <div className="relative top-8 mx-auto p-5 w-11/12 md:w-3/4 lg:w-1/2 max-w-2xl">
+            <div className="relative overflow-hidden bg-white/95 backdrop-blur-md border border-slate-200/60 rounded-3xl shadow-2xl shadow-blue-500/20">
+              <div className="absolute inset-0 bg-gradient-to-br from-white/90 to-slate-50/30"></div>
+              
+              <div className="relative p-6 sm:p-8">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl flex items-center justify-center shadow-lg">
+                      <Mail className="h-6 w-6 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                        Send Email
+                      </h3>
+                      <p className="text-sm text-slate-600 font-medium">
+                        Contact {selectedResume.filename}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowEmailModal(false)}
+                    className="w-10 h-10 bg-slate-100/80 hover:bg-slate-200/80 rounded-xl flex items-center justify-center text-slate-600 hover:text-slate-800 transition-all duration-200"
+                  >
+                    ✕
+                  </button>
+                </div>
+                
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-3">
+                      Email Subject
+                    </label>
+                    <input
+                      type="text"
+                      value={emailTitle}
+                      onChange={(e) => setEmailTitle(e.target.value)}
+                      placeholder="e.g., Follow-up regarding your application..."
+                      className="w-full px-4 py-3 bg-white/80 border border-slate-200/60 hover:border-slate-300/80 focus:border-green-500/60 rounded-2xl shadow-sm hover:shadow-md focus:shadow-lg focus:outline-none focus:ring-4 focus:ring-green-500/20 transition-all duration-300 placeholder-slate-500 text-slate-900 font-medium"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-3">
+                      Message Content
+                    </label>
+                    <textarea
+                      value={emailMessage}
+                      onChange={(e) => setEmailMessage(e.target.value)}
+                      placeholder="Enter your message for the candidate..."
+                      rows={6}
+                      className="w-full px-4 py-3 bg-white/80 border border-slate-200/60 hover:border-slate-300/80 focus:border-green-500/60 rounded-2xl shadow-sm hover:shadow-md focus:shadow-lg focus:outline-none focus:ring-4 focus:ring-green-500/20 transition-all duration-300 placeholder-slate-500 text-slate-900 font-medium resize-none"
+                    />
+                  </div>
+
+                  {/* Email Configuration */}
+                  <div className="relative overflow-hidden bg-slate-50/80 border border-slate-200/60 rounded-2xl p-6">
+                    <div className="flex items-center space-x-3 mb-4">
+                      <input
+                        type="checkbox"
+                        id="sendRealEmailsSingle"
+                        checked={sendRealEmails}
+                        onChange={(e) => setSendRealEmails(e.target.checked)}
+                        className="rounded border-slate-300 text-green-600 focus:ring-green-500/30"
+                      />
+                      <label htmlFor="sendRealEmailsSingle" className="text-sm font-semibold text-slate-700">
+                        📧 Send real email to candidate
+                      </label>
+                    </div>
+                    
+                    {sendRealEmails && (
+                      <div className={`p-4 rounded-xl border ${
+                        import.meta.env.VITE_EMAILJS_SERVICE_ID 
+                          ? 'bg-green-50/80 border-green-200/60' 
+                          : 'bg-yellow-50/80 border-yellow-200/60'
+                      }`}>
+                        <div className="text-sm">
+                          {import.meta.env.VITE_EMAILJS_SERVICE_ID ? (
+                            <div className="text-green-700">
+                              <strong>✅ EmailJS configured</strong> - Ready for professional email sending
+                              <br />Email will be sent to extracted candidate address
+                            </div>
+                          ) : (
+                            <div className="text-yellow-700">
+                              <strong>⚠️ EmailJS not configured</strong> - Will use email client fallback
+                              <br />Set up EmailJS for direct sending
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {!sendRealEmails && (
+                      <div className="p-4 bg-blue-50/80 border border-blue-200/60 rounded-xl">
+                        <p className="text-sm text-blue-700">
+                          <strong>📋 Tracking Mode:</strong> Creates communication record for tracking only. No email sent.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="flex justify-end space-x-3 mt-8 pt-6 border-t border-slate-200/60">
+                  <button
+                    onClick={() => setShowEmailModal(false)}
+                    className="px-6 py-3 bg-white/80 hover:bg-white border border-slate-200/60 hover:border-slate-300/80 text-slate-700 hover:text-slate-900 font-medium rounded-2xl shadow-sm hover:shadow-md transition-all duration-300"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSingleEmail}
+                    disabled={!emailTitle.trim() || !emailMessage.trim() || emailSending}
+                    className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-semibold rounded-2xl shadow-lg hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
+                  >
+                    {emailSending ? 'Sending...' : sendRealEmails ? 'Send Email' : 'Create Record'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
