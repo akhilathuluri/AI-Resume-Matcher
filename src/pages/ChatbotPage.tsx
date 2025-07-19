@@ -374,8 +374,9 @@ ResumeAI Team`)
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'text-embedding-3-small',
-          input: text,
+          model: 'text-embedding-3-large', // Changed to match FilesPage
+          input: text.substring(0, 7500), // Ensure within limits
+          // Using full 3072 dimensions for better accuracy
         }),
       })
 
@@ -432,22 +433,51 @@ ResumeAI Team`)
             return null
           }
 
-          // Ensure embeddingArray is actually an array
+          // Ensure embeddingArray is actually an array and has correct dimensions
           if (!Array.isArray(embeddingArray)) {
             console.error('Parsed embedding is not an array:', embeddingArray)
             return null
           }
           
-          // Calculate cosine similarity
+          // Check dimension compatibility
+          if (jobEmbedding.length !== embeddingArray.length) {
+            console.warn(`Dimension mismatch: job ${jobEmbedding.length} vs resume ${embeddingArray.length}`)
+            return null
+          }
+          
+          // Calculate enhanced cosine similarity (matching FilesPage)
           const dotProduct = jobEmbedding.reduce((sum, a, i) => sum + a * embeddingArray[i], 0)
           const normA = Math.sqrt(jobEmbedding.reduce((sum, a) => sum + a * a, 0))
           const normB = Math.sqrt(embeddingArray.reduce((sum: number, b: number) => sum + b * b, 0))
-          const similarity = dotProduct / (normA * normB)
+          
+          if (normA === 0 || normB === 0) {
+            console.warn('Zero magnitude vector detected')
+            return null
+          }
+          
+          const cosineSim = dotProduct / (normA * normB)
+          
+          // Normalize cosine similarity to [0, 1] range like in FilesPage
+          const normalizedSimilarity = Math.max(0, (cosineSim + 1) / 2)
+          
+          // Add keyword matching for better accuracy
+          const jobKeywords = jobDescription.toLowerCase().split(/\s+/).filter((word: string) => word.length > 3)
+          const resumeKeywords = (resume.content || '').toLowerCase().split(/\s+/).filter((word: string) => word.length > 3)
+          const intersection = jobKeywords.filter(k => resumeKeywords.includes(k))
+          const keywordScore = intersection.length / Math.max(jobKeywords.length, resumeKeywords.length, 1)
+          
+          // Combined score (70% cosine + 30% keyword matching)
+          const finalSimilarity = (normalizedSimilarity * 0.7) + (keywordScore * 0.3)
+          
+          console.log(`Resume: ${resume.filename}`)
+          console.log(`- Cosine similarity: ${cosineSim.toFixed(4)} (normalized: ${normalizedSimilarity.toFixed(4)})`)
+          console.log(`- Keyword score: ${keywordScore.toFixed(4)}`)
+          console.log(`- Final similarity: ${finalSimilarity.toFixed(4)} (${(finalSimilarity * 100).toFixed(1)}%)`)
 
           return {
             id: resume.id,
             filename: resume.filename,
-            similarity: similarity,
+            similarity: finalSimilarity,
             file_path: resume.file_path,
             content: resume.content, // Include content for AI analysis
           }
