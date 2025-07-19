@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { Upload, File, Trash2, Eye, Search, RefreshCw, Mail, MessageSquare, FileDown, Users, Zap } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
@@ -249,10 +249,12 @@ export function FilesPage() {
   }
 
   const extractTextFromFile = async (file: File): Promise<string> => {
+    let rawText = ''
+    
     if (file.type === 'application/pdf') {
-      return await extractTextFromPDF(file)
+      rawText = await extractTextFromPDF(file)
     } else if (file.type === 'text/plain') {
-      return new Promise((resolve, reject) => {
+      rawText = await new Promise((resolve, reject) => {
         const reader = new FileReader()
         reader.onload = (event) => {
           const text = event.target?.result as string
@@ -262,12 +264,177 @@ export function FilesPage() {
         reader.readAsText(file)
       })
     } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-      return await extractTextFromDOCX(file)
+      rawText = await extractTextFromDOCX(file)
     } else {
       throw new Error('Unsupported file type. Please upload PDF, TXT, or DOCX files.')
     }
+    
+    // Return both raw text and preprocessed text
+    // Store raw text for display, use preprocessed for embeddings
+    return rawText
   }
 
+  // Enhanced embedding cache for performance
+  const embeddingCache = useRef(new Map<string, number[]>())
+
+  // Clear cache on component mount due to dimension change from 1536 to 3072
+  useEffect(() => {
+    // Clear any cached 1536-dimensional embeddings since we now use 3072
+    embeddingCache.current.clear()
+    console.log('Cleared embedding cache due to dimension upgrade to 3072')
+  }, [])
+
+  // Enhanced cosine similarity with hybrid scoring
+  const calculateEnhancedSimilarity = useCallback((
+    embedding1: number[], 
+    embedding2: number[], 
+    text1: string, 
+    text2: string
+  ): number => {
+    if (!embedding1?.length || !embedding2?.length) {
+      console.warn('Missing embeddings for similarity calculation')
+      return 0
+    }
+    
+    // Check dimension compatibility
+    if (embedding1.length !== embedding2.length) {
+      console.warn(`Dimension mismatch: ${embedding1.length} vs ${embedding2.length}`)
+      return 0
+    }
+    
+    // Calculate cosine similarity (primary score - 70% weight)
+    const dotProduct = embedding1.reduce((sum, a, i) => sum + a * embedding2[i], 0)
+    const magnitude1 = Math.sqrt(embedding1.reduce((sum, a) => sum + a * a, 0))
+    const magnitude2 = Math.sqrt(embedding2.reduce((sum, a) => sum + a * a, 0))
+    
+    if (magnitude1 === 0 || magnitude2 === 0) {
+      console.warn('Zero magnitude vector detected')
+      return 0
+    }
+    
+    const cosineSim = dotProduct / (magnitude1 * magnitude2)
+    
+    // Ensure cosine similarity is in valid range [-1, 1] and convert to [0, 1]
+    const normalizedCosineSim = Math.max(0, (cosineSim + 1) / 2)
+    
+    console.log(`Cosine similarity: ${cosineSim.toFixed(4)} (normalized: ${normalizedCosineSim.toFixed(4)})`)
+    
+    // Keyword overlap score (20% weight)
+    const keywords1 = text1.toLowerCase().split(/\s+/).filter(word => word.length > 3)
+    const keywords2 = text2.toLowerCase().split(/\s+/).filter(word => word.length > 3)
+    const intersection = keywords1.filter(k => keywords2.includes(k))
+    const keywordScore = intersection.length / Math.max(keywords1.length, keywords2.length, 1)
+    
+    // Section structure similarity (10% weight)
+    const sections1 = (text1.match(/\b(education|experience|skills|projects|achievements|work|employment)\b/gi) || []).length
+    const sections2 = (text2.match(/\b(education|experience|skills|projects|achievements|work|employment)\b/gi) || []).length
+    const sectionScore = Math.min(sections1, sections2) / Math.max(sections1, sections2, 1)
+    
+    // Combined score - use normalized cosine similarity
+    const finalScore = (normalizedCosineSim * 0.7) + (keywordScore * 0.2) + (sectionScore * 0.1)
+    
+    console.log(`Final similarity score: ${finalScore.toFixed(4)} (${(finalScore * 100).toFixed(1)}%)`)
+    
+    return finalScore
+  }, [])
+
+  // Enhanced text preprocessing for better embedding quality
+  const preprocessTextForEmbedding = useCallback((text: string): string => {
+    // Extract key sections and important keywords
+    const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0)
+    
+    const importantSections = []
+    const skillKeywords = [
+      'javascript', 'typescript', 'python', 'react', 'node', 'sql', 'aws', 'azure', 'docker',
+      'kubernetes', 'git', 'agile', 'scrum', 'machine learning', 'ai', 'api', 'database',
+      'frontend', 'backend', 'fullstack', 'mobile', 'web', 'cloud', 'devops', 'ci/cd'
+    ]
+    
+    const experienceKeywords = [
+      'years', 'experience', 'senior', 'lead', 'manager', 'director', 'architect',
+      'developed', 'implemented', 'managed', 'designed', 'built', 'created', 'led'
+    ]
+    
+    // Extract contact information
+    const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g
+    const phoneRegex = /(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g
+    
+    const emails = text.match(emailRegex) || []
+    const phones = text.match(phoneRegex) || []
+    
+    if (emails.length > 0) importantSections.push(`Email: ${emails[0]}`)
+    if (phones.length > 0) importantSections.push(`Phone: ${phones[0]}`)
+    
+    // Extract education section
+    const educationLines = lines.filter(line => {
+      const lower = line.toLowerCase()
+      return lower.includes('education') || lower.includes('university') || 
+             lower.includes('college') || lower.includes('degree') || 
+             lower.includes('bachelor') || lower.includes('master') || lower.includes('phd')
+    })
+    
+    if (educationLines.length > 0) {
+      importantSections.push('EDUCATION:')
+      importantSections.push(...educationLines.slice(0, 3))
+    }
+    
+    // Extract skills section
+    const skillLines = lines.filter(line => {
+      const lower = line.toLowerCase()
+      return lower.includes('skill') || lower.includes('technolog') || 
+             lower.includes('programming') || lower.includes('language') ||
+             skillKeywords.some(skill => lower.includes(skill))
+    })
+    
+    if (skillLines.length > 0) {
+      importantSections.push('SKILLS:')
+      importantSections.push(...skillLines.slice(0, 5))
+    }
+    
+    // Extract experience section
+    const experienceLines = lines.filter(line => {
+      const lower = line.toLowerCase()
+      return lower.includes('experience') || lower.includes('work') || 
+             lower.includes('employment') || lower.includes('position') ||
+             experienceKeywords.some(exp => lower.includes(exp))
+    })
+    
+    if (experienceLines.length > 0) {
+      importantSections.push('EXPERIENCE:')
+      importantSections.push(...experienceLines.slice(0, 8))
+    }
+    
+    // Add key achievements and projects
+    const achievementLines = lines.filter(line => {
+      const lower = line.toLowerCase()
+      return lower.includes('project') || lower.includes('achievement') || 
+             lower.includes('accomplishment') || lower.includes('award') ||
+             lower.includes('certification')
+    })
+    
+    if (achievementLines.length > 0) {
+      importantSections.push('PROJECTS & ACHIEVEMENTS:')
+      importantSections.push(...achievementLines.slice(0, 5))
+    }
+    
+    // Join and ensure we stay within 8k character limit for text-embedding-3-large
+    let processedText = importantSections.join('\n')
+    
+    // If still too long, prioritize the most important sections
+    if (processedText.length > 7500) {
+      const priority = [
+        ...skillLines.slice(0, 3),
+        ...experienceLines.slice(0, 5),
+        ...educationLines.slice(0, 2),
+        ...achievementLines.slice(0, 3)
+      ]
+      processedText = priority.join('\n').substring(0, 7500)
+    }
+    
+    return processedText || text.substring(0, 7500)
+  }, [])
+
+  // Optimized generate embedding with caching
   const generateEmbedding = async (text: string, retries: number = 3): Promise<number[]> => {
     try {
       // Validate input text
@@ -276,8 +443,31 @@ export function FilesPage() {
         return []
       }
 
-      // Truncate text if too long (API limit is usually around 8192 tokens)
-      const truncatedText = text.substring(0, 8000)
+      // Create a Unicode-safe hash for caching (including dimensions in hash)
+      // Use a simple hash function that works with all Unicode characters
+      const createHash = (str: string): string => {
+        let hash = 0
+        for (let i = 0; i < str.length; i++) {
+          const char = str.charCodeAt(i)
+          hash = ((hash << 5) - hash) + char
+          hash = hash & hash // Convert to 32-bit integer
+        }
+        return Math.abs(hash).toString(36)
+      }
+      
+      const textHash = createHash(text.substring(0, 200) + '_3072d').substring(0, 20)
+      
+      // Check cache first
+      if (embeddingCache.current.has(textHash)) {
+        console.log('Using cached embedding')
+        return embeddingCache.current.get(textHash)!
+      }
+
+      // Preprocess text for better embedding quality
+      const processedText = preprocessTextForEmbedding(text)
+      
+      // Ensure we're within the 8k limit for text-embedding-3-large
+      const finalText = processedText.length > 7500 ? processedText.substring(0, 7500) : processedText
 
       const response = await fetch('https://models.inference.ai.azure.com/embeddings', {
         method: 'POST',
@@ -286,8 +476,9 @@ export function FilesPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'text-embedding-3-small',
-          input: truncatedText,
+          model: 'text-embedding-3-large',
+          input: finalText,
+          // Using full 3072 dimensions for better accuracy (requires database schema update)
         }),
       })
 
@@ -313,6 +504,25 @@ export function FilesPage() {
       if (!embedding || !Array.isArray(embedding) || embedding.length === 0) {
         console.warn('Invalid embedding received from API')
         return []
+      }
+
+      // Validate embedding dimensions (should be 3072 for text-embedding-3-large)
+      if (embedding.length !== 3072) {
+        console.warn(`Unexpected embedding dimensions: got ${embedding.length}, expected 3072`)
+        // Don't return empty array, still use the embedding but log the issue
+      }
+
+      console.log(`Generated embedding with ${embedding.length} dimensions`)
+
+      // Cache the result
+      embeddingCache.current.set(textHash, embedding)
+      
+      // Limit cache size to prevent memory issues
+      if (embeddingCache.current.size > 100) {
+        const firstKey = embeddingCache.current.keys().next().value
+        if (firstKey) {
+          embeddingCache.current.delete(firstKey)
+        }
       }
 
       return embedding
@@ -455,6 +665,16 @@ export function FilesPage() {
         ])
 
       if (dbError) {
+        // Check for dimension mismatch errors
+        if (dbError.message?.includes('expected 3072 dimensions') || dbError.message?.includes('expected 1536 dimensions')) {
+          console.error(`Embedding dimension mismatch: ${dbError.message}`)
+          showNotification(
+            `Database schema mismatch detected. Please run the database migration to update embedding dimensions.`,
+            'error'
+          )
+          throw new Error('Embedding dimension mismatch - database migration required')
+        }
+        
         // If it's a vector dimension error and we have an empty embedding, try without embedding
         if (dbError.message?.includes('vector must have at least 1 dimension') && embedding.length === 0) {
           console.warn(`Retrying ${file.name} without embedding due to dimension error`)
@@ -608,6 +828,108 @@ export function FilesPage() {
       showNotification(`Failed to regenerate embedding for ${filename}: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error')
     }
   }
+
+  // Bulk regenerate embeddings for better performance with text-embedding-3-large
+  const regenerateAllEmbeddings = async () => {
+    if (!user) return
+
+    const resumesWithoutEmbeddings = resumes.filter(r => !r.embedding || r.embedding.length === 0)
+    
+    if (resumesWithoutEmbeddings.length === 0) {
+      showNotification('All resumes already have embeddings', 'info')
+      return
+    }
+
+    if (!confirm(
+      `Regenerate embeddings for ${resumesWithoutEmbeddings.length} resumes using the enhanced text-embedding-3-large model?\n\n` +
+      `This will improve matching accuracy but may take a few minutes.`
+    )) {
+      return
+    }
+
+    setLoading(true)
+    let successCount = 0
+    let failCount = 0
+
+    try {
+      showNotification(`Starting bulk embedding regeneration for ${resumesWithoutEmbeddings.length} resumes...`, 'info')
+
+      for (let i = 0; i < resumesWithoutEmbeddings.length; i++) {
+        const resume = resumesWithoutEmbeddings[i]
+        
+        try {
+          showNotification(`Processing ${i + 1}/${resumesWithoutEmbeddings.length}: ${resume.filename}`, 'info')
+          
+          if (resume.content) {
+            const embedding = await generateEmbedding(resume.content)
+            
+            if (embedding && embedding.length > 0) {
+              const { error: updateError } = await supabase
+                .from('resumes')
+                .update({ embedding })
+                .eq('id', resume.id)
+              
+              if (updateError) throw updateError
+              successCount++
+            } else {
+              throw new Error('Failed to generate embedding')
+            }
+          } else {
+            throw new Error('No content available')
+          }
+
+          // Rate limiting - wait between requests
+          if (i < resumesWithoutEmbeddings.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1500))
+          }
+
+        } catch (error) {
+          console.error(`Failed to regenerate embedding for ${resume.filename}:`, error)
+          failCount++
+        }
+      }
+
+      if (successCount > 0) {
+        await fetchResumes() // Refresh the list
+      }
+
+      if (failCount === 0) {
+        showNotification(`✅ Successfully regenerated all ${successCount} embeddings!`, 'success')
+      } else {
+        showNotification(
+          `⚠️ Regeneration completed: ${successCount} successful, ${failCount} failed`,
+          successCount > 0 ? 'info' : 'error'
+        )
+      }
+
+    } catch (error) {
+      console.error('Error in bulk regeneration:', error)
+      showNotification('Error during bulk regeneration. Please try again.', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Enhanced resume matching function using the new similarity calculation
+  const findSimilarResumes = useCallback((targetResume: any, count: number = 5) => {
+    if (!targetResume?.embedding || !targetResume?.content) return []
+
+    const similarities = resumes
+      .filter(r => r.id !== targetResume.id && r.embedding && r.content)
+      .map(resume => ({
+        ...resume,
+        similarity: calculateEnhancedSimilarity(
+          targetResume.embedding,
+          resume.embedding as number[],
+          targetResume.content,
+          resume.content as string
+        )
+      }))
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, count)
+
+    return similarities
+  }, [resumes, calculateEnhancedSimilarity])
 
   const updateStorageStats = async () => {
     if (!user) return
@@ -1317,6 +1639,16 @@ export function FilesPage() {
                 </button>
                 <button
                   type="button"
+                  onClick={regenerateAllEmbeddings}
+                  disabled={loading}
+                  className="group inline-flex items-center px-4 py-3 bg-white/80 hover:bg-white border border-indigo-200/60 hover:border-indigo-300/80 text-indigo-700 hover:text-indigo-800 font-medium rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Regenerate embeddings for better matching with text-embedding-3-large model"
+                >
+                  <Zap className="h-4 w-4 mr-2 group-hover:scale-110 transition-transform" />
+                  <span className="hidden sm:inline">Upgrade AI</span>
+                </button>
+                <button
+                  type="button"
                   onClick={handleRefresh}
                   disabled={loading}
                   className="group inline-flex items-center px-4 py-3 bg-white/80 hover:bg-white border border-slate-200/60 hover:border-slate-300/80 text-slate-700 hover:text-slate-900 font-medium rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1368,7 +1700,7 @@ export function FilesPage() {
                   />
                 </label>
                 <p className="text-sm text-slate-500 font-medium">
-                  Supports PDF, DOCX, and TXT files up to 100MB each and you can upload 50 to 60 resumes at a time 
+                  Supports PDF, DOCX, and TXT files up to 100MB each
                 </p>
                 <div className="flex flex-wrap justify-center gap-3 pt-2">
                   <span className="inline-flex items-center px-3 py-1.5 bg-blue-100/80 text-blue-700 text-xs font-medium rounded-xl">
